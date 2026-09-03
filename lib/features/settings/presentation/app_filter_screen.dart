@@ -3,12 +3,16 @@
 // ─────────────────────────────────────────────────────
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../../core/database/database_helper.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../notifications/models/notification_model.dart';
 
-/// Screen allowing users to inspect tracked application packages and toggle
-/// notification capture rules individually or in bulk.
+/// App filter filter mode
+enum AppFilterCategory { all, user, system }
+
+/// Screen allowing users to inspect ALL installed apps on their Android device,
+/// and toggle notification logging rules individually or in bulk.
 class AppFilterScreen extends StatefulWidget {
   const AppFilterScreen({super.key});
 
@@ -17,81 +21,172 @@ class AppFilterScreen extends StatefulWidget {
 }
 
 class _AppFilterScreenState extends State<AppFilterScreen> {
+  static const MethodChannel _platformChannel =
+      MethodChannel('com.example.notification_timeline_app/installed_apps');
+
   final TextEditingController _searchController = TextEditingController();
-  List<AppFilterModel> _filters = [];
+  List<AppFilterItem> _allApps = [];
   bool _isLoading = true;
   String _searchQuery = '';
+  AppFilterCategory _selectedCategory = AppFilterCategory.all;
 
   @override
   void initState() {
     super.initState();
-    _loadFilters();
+    _loadInstalledAppsAndFilters();
   }
 
   @override
-  void dispose() {
+  void dispose) {
     _searchController.dispose();
     super.dispose();
   }
 
-  /// Load app filter rules from SQLite
-  /// # O(n) time, O(n) space
-  Future<void> _loadFilters() async {
+  /// Load device installed apps from Android MethodChannel and merge with SQLite filter states
+  /// # O(n log n) time due to sorting, O(n) space
+  Future<void> _loadInstalledAppsAndFilters() async {
     setState(() => _isLoading = true);
+
     try {
-      final items = await DatabaseHelper.instance.getAllAppFilters();
+      // 1. Fetch installed packages from Android host via platform channel
+      final List<dynamic>? installedList =
+          await _platformChannel.invokeMethod<List<dynamic>>('getInstalledApps');
+
+      // 2. Fetch configured filter states from SQLite
+      final List<AppFilterModel> dbFilters =
+          await DatabaseHelper.instance.getAllAppFilters();
+      final Map<String, bool> dbFilterMap = {
+        for (final f in dbFilters) f.packageName: f.isEnabled,
+      };
+
+      final List<AppFilterItem> items = [];
+
+      if (installedList != null && installedList.isNotEmpty) {
+        for (final item in installedList) {
+          if (item is Map) {
+            final pkg = item['packageName'] as String? ?? '';
+            final name = item['appName'] as String? ?? pkg;
+            final isSystem = item['isSystemApp'] as bool? ?? false;
+
+            if (pkg.isNotEmpty) {
+              // Default to enabled (true) if not explicitly disabled in DB
+              final bool isEnabled = dbFilterMap[pkg] ?? true;
+              items.add(AppFilterItem(
+                packageName: pkg,
+                appName: name,
+                isEnabled: isEnabled,
+                isSystemApp: isSystem,
+              ));
+            }
+          }
+        }
+      } else {
+        // Fallback: Use filters already recorded in SQLite if method channel is unavailable
+        for (final f in dbFilters) {
+          items.add(AppFilterItem(
+            packageName: f.packageName,
+            appName: f.appName,
+            isEnabled: f.isEnabled,
+            isSystemApp: false,
+          ));
+        }
+      }
+
       if (mounted) {
         setState(() {
-          _filters = items;
+          _allApps = items;
           _isLoading = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
+      // Graceful fallback to SQLite records
+      final List<AppFilterModel> dbFilters =
+          await DatabaseHelper.instance.getAllAppFilters();
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _allApps = dbFilters
+              .map((f) => AppFilterItem(
+                    packageName: f.packageName,
+                    appName: f.appName,
+                    isEnabled: f.isEnabled,
+                    isSystemApp: false,
+                  ))
+              .toList();
+          _isLoading = false;
+        });
       }
     }
   }
 
   /// Toggle single application tracking rule
-  Future<void> _toggleFilter(AppFilterModel filter, bool newValue) async {
-    // Optimistic UI update
+  Future<void> _toggleFilter(AppFilterItem item, bool newValue) async {
     setState(() {
-      final index = _filters.indexWhere((f) => f.packageName == filter.packageName);
+      final index = _allApps.indexWhere((a) => a.packageName == item.packageName);
       if (index != -1) {
-        _filters[index] = filter.copyWith(isEnabled: newValue);
+        _allApps[index] = item.copyWith(isEnabled: newValue);
       }
     });
 
     await DatabaseHelper.instance.upsertAppFilter(
-      filter.packageName,
-      filter.appName,
+      item.packageName,
+      item.appName,
       newValue,
     );
   }
 
-  /// Bulk toggle all filters enabled / disabled
+  /// Bulk toggle all applications enabled or disabled
   Future<void> _toggleAll(bool enableAll) async {
     setState(() {
-      _filters = _filters.map((f) => f.copyWith(isEnabled: enableAll)).toList();
+      _allApps = _allApps.map((a) => a.copyWith(isEnabled: enableAll)).toList();
     });
 
-    await DatabaseHelper.instance.toggleAllAppFilters(enableAll);
+    for (final item in _allApps) {
+      await DatabaseHelper.instance.upsertAppFilter(
+        item.packageName,
+        item.appName,
+        enableAll,
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final filteredList = _filters.where((f) {
+    // Filter by search query and category
+    final filteredList = _allApps.where((app) {
+      if (_selectedCategory == AppFilterCategory.user && app.isSystemApp) {
+        return false;
+      }
+      if (_selectedCategory == AppFilterCategory.system && !app.isSystemApp) {
+        return false;
+      }
+
       if (_searchQuery.isEmpty) return true;
       final q = _searchQuery.toLowerCase();
-      return f.appName.toLowerCase().contains(q) || f.packageName.toLowerCase().contains(q);
+      return app.appName.toLowerCase().contains(q) ||
+          app.packageName.toLowerCase().contains(q);
     }).toList();
+
+    final enabledCount = _allApps.where((a) => a.isEnabled).length;
+    final totalCount = _allApps.length;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('App Filters', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('App Filters',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+            Text(
+              '$enabledCount of $totalCount apps enabled',
+              style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: AppTheme.darkTextMuted),
+            ),
+          ],
+        ),
         actions: [
           TextButton.icon(
             onPressed: () => _toggleAll(true),
@@ -100,8 +195,10 @@ class _AppFilterScreenState extends State<AppFilterScreen> {
           ),
           TextButton.icon(
             onPressed: () => _toggleAll(false),
-            icon: const Icon(Icons.block_rounded, size: 18, color: AppTheme.accentRose),
-            label: const Text('All Off', style: TextStyle(fontSize: 12, color: AppTheme.accentRose)),
+            icon: const Icon(Icons.block_rounded,
+                size: 18, color: AppTheme.accentRose),
+            label: const Text('All Off',
+                style: TextStyle(fontSize: 12, color: AppTheme.accentRose)),
           ),
           const SizedBox(width: 8),
         ],
@@ -110,12 +207,12 @@ class _AppFilterScreenState extends State<AppFilterScreen> {
         children: [
           // Filter Search Bar
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
             child: TextField(
               controller: _searchController,
               onChanged: (val) => setState(() => _searchQuery = val),
               decoration: InputDecoration(
-                hintText: 'Search applications...',
+                hintText: 'Search installed apps or packages...',
                 prefixIcon: const Icon(Icons.search_rounded, size: 20),
                 suffixIcon: _searchController.text.isNotEmpty
                     ? IconButton(
@@ -126,10 +223,34 @@ class _AppFilterScreenState extends State<AppFilterScreen> {
                         },
                       )
                     : null,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               ),
             ),
           ),
+
+          // Category Chips (All Apps, User Apps, System Apps)
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: Row(
+              children: [
+                _buildCategoryChip('All Apps (${_allApps.length})',
+                    AppFilterCategory.all, isDark),
+                const SizedBox(width: 8),
+                _buildCategoryChip(
+                    'User Apps (${_allApps.where((a) => !a.isSystemApp).length})',
+                    AppFilterCategory.user,
+                    isDark),
+                const SizedBox(width: 8),
+                _buildCategoryChip(
+                    'System Apps (${_allApps.where((a) => a.isSystemApp).length})',
+                    AppFilterCategory.system,
+                    isDark),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
 
           // Apps List View
           Expanded(
@@ -150,12 +271,15 @@ class _AppFilterScreenState extends State<AppFilterScreen> {
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(14),
                               side: BorderSide(
-                                color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder,
+                                color: isDark
+                                    ? AppTheme.darkBorder
+                                    : AppTheme.lightBorder,
                                 width: 1,
                               ),
                             ),
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 14, vertical: 10),
                               child: Row(
                                 children: [
                                   // App Initial Icon Avatar
@@ -163,16 +287,23 @@ class _AppFilterScreenState extends State<AppFilterScreen> {
                                     width: 40,
                                     height: 40,
                                     decoration: BoxDecoration(
-                                      color: (isDark ? AppTheme.primaryLight : AppTheme.primaryDark).withOpacity(0.12),
+                                      color: (isDark
+                                              ? AppTheme.primaryLight
+                                              : AppTheme.primaryDark)
+                                          .withOpacity(0.12),
                                       borderRadius: BorderRadius.circular(10),
                                     ),
                                     child: Center(
                                       child: Text(
-                                        item.appName.isNotEmpty ? item.appName[0].toUpperCase() : '?',
+                                        item.appName.isNotEmpty
+                                            ? item.appName[0].toUpperCase()
+                                            : '?',
                                         style: TextStyle(
                                           fontSize: 16,
                                           fontWeight: FontWeight.w700,
-                                          color: isDark ? AppTheme.primaryLight : AppTheme.primaryDark,
+                                          color: isDark
+                                              ? AppTheme.primaryLight
+                                              : AppTheme.primaryDark,
                                         ),
                                       ),
                                     ),
@@ -184,18 +315,55 @@ class _AppFilterScreenState extends State<AppFilterScreen> {
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Text(
-                                          item.appName,
-                                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
+                                        Row(
+                                          children: [
+                                            Flexible(
+                                              child: Text(
+                                                item.appName,
+                                                style: const TextStyle(
+                                                    fontSize: 14,
+                                                    fontWeight:
+                                                        FontWeight.w700),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                            if (item.isSystemApp) ...[
+                                              const SizedBox(width: 6),
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                        horizontal: 6,
+                                                        vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: (isDark
+                                                          ? AppTheme
+                                                              .darkTextMuted
+                                                          : AppTheme
+                                                              .lightTextMuted)
+                                                      .withOpacity(0.2),
+                                                  borderRadius:
+                                                      BorderRadius.circular(6),
+                                                ),
+                                                child: const Text(
+                                                  'System',
+                                                  style: TextStyle(
+                                                      fontSize: 9,
+                                                      fontWeight:
+                                                          FontWeight.w600),
+                                                ),
+                                              ),
+                                            ],
+                                          ],
                                         ),
                                         const SizedBox(height: 2),
                                         Text(
                                           item.packageName,
                                           style: TextStyle(
                                             fontSize: 11,
-                                            color: isDark ? AppTheme.darkTextMuted : AppTheme.lightTextMuted,
+                                            color: isDark
+                                                ? AppTheme.darkTextMuted
+                                                : AppTheme.lightTextMuted,
                                           ),
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
@@ -221,6 +389,35 @@ class _AppFilterScreenState extends State<AppFilterScreen> {
     );
   }
 
+  Widget _buildCategoryChip(
+      String label, AppFilterCategory category, bool isDark) {
+    final isSelected = _selectedCategory == category;
+    final primaryAccent = isDark ? AppTheme.primaryLight : AppTheme.primaryDark;
+
+    return ChoiceChip(
+      label: Text(label),
+      selected: isSelected,
+      onSelected: (_) => setState(() => _selectedCategory = category),
+      labelStyle: TextStyle(
+        fontSize: 12,
+        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+        color: isSelected
+            ? Colors.white
+            : (isDark
+                ? AppTheme.darkTextSecondary
+                : AppTheme.lightTextSecondary),
+      ),
+      selectedColor: primaryAccent,
+      backgroundColor: isDark ? AppTheme.darkCard : AppTheme.lightCard,
+      side: BorderSide(
+        color: isSelected
+            ? primaryAccent
+            : (isDark ? AppTheme.darkBorder : AppTheme.lightBorder),
+      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    );
+  }
+
   Widget _buildEmptyState(bool isDark) {
     return Center(
       child: Padding(
@@ -229,29 +426,60 @@ class _AppFilterScreenState extends State<AppFilterScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              Icons.tune_rounded,
+              Icons.search_off_rounded,
               size: 40,
               color: isDark ? AppTheme.darkTextMuted : AppTheme.lightTextMuted,
             ),
             const SizedBox(height: 14),
-            Text(
-              _searchQuery.isNotEmpty ? 'No Apps Matching Search' : 'No Apps Tracked Yet',
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+            const Text(
+              'No Apps Found',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 4),
             Text(
               _searchQuery.isNotEmpty
-                  ? 'Check your spelling or clear search filters.'
-                  : 'As new notifications arrive, their respective apps will be listed here automatically.',
+                  ? 'No installed applications match "$_searchQuery".'
+                  : 'Unable to retrieve installed applications from device.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 12,
-                color: isDark ? AppTheme.darkTextSecondary : AppTheme.lightTextSecondary,
+                color: isDark
+                    ? AppTheme.darkTextSecondary
+                    : AppTheme.lightTextSecondary,
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Helper model representing an installed app with its toggle status
+class AppFilterItem {
+  final String packageName;
+  final String appName;
+  final bool isEnabled;
+  final bool isSystemApp;
+
+  const AppFilterItem({
+    required this.packageName,
+    required this.appName,
+    required this.isEnabled,
+    required this.isSystemApp,
+  });
+
+  AppFilterItem copyWith({
+    String? packageName,
+    String? appName,
+    bool? isEnabled,
+    bool? isSystemApp,
+  }) {
+    return AppFilterItem(
+      packageName: packageName ?? this.packageName,
+      appName: appName ?? this.appName,
+      isEnabled: isEnabled ?? this.isEnabled,
+      isSystemApp: isSystemApp ?? this.isSystemApp,
     );
   }
 }

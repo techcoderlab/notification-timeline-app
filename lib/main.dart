@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'core/database/database_helper.dart';
 import 'core/security/secure_storage.dart';
 import 'core/theme/app_theme.dart';
+import 'core/theme/theme_service.dart';
 import 'features/auth/presentation/lock_screen.dart';
 
 /// Main entry point of the Smart Notification Timeline & Tracker application
@@ -29,9 +30,10 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
 
-  // Pre-warm Secure Storage & Database connections
+  // Pre-warm Secure Storage, Theme preference & Database connections
   try {
     await SecureStorageService.instance.initializeDefaults();
+    await ThemeService.instance.initialize();
     await DatabaseHelper.instance.database;
   } catch (e, stackTrace) {
     developer.log('Bootstrap initialization warning: $e', error: e, stackTrace: stackTrace, name: 'Main');
@@ -46,13 +48,18 @@ class SmartNotificationTrackerApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Smart Notification Timeline & Tracker',
-      debugShowCheckedModeBanner: false,
-      themeMode: ThemeMode.dark, // Default to OLED dark theme
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
-      home: const LockScreen(),
+    return ListenableBuilder(
+      listenable: ThemeService.instance,
+      builder: (context, _) {
+        return MaterialApp(
+          title: 'Smart Notification Timeline & Tracker',
+          debugShowCheckedModeBanner: false,
+          themeMode: ThemeService.instance.themeMode,
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
+          home: const LockScreen(),
+        );
+      },
     );
   }
 }

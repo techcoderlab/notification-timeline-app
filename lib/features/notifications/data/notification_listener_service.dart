@@ -4,22 +4,23 @@
 
 import 'dart:async';
 import 'dart:developer' as developer;
+import 'package:flutter/widgets.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_notification_listener/flutter_notification_listener.dart';
 import '../../../core/database/database_helper.dart';
+import '../../../core/security/secure_storage.dart';
 import '../models/notification_model.dart';
 
 /// Top-level callback registered for flutter_notification_listener background isolate execution.
 @pragma('vm:entry-point')
 void _notificationEventCallback(NotificationEvent evt) {
-  // Pass to service handler
+  WidgetsFlutterBinding.ensureInitialized();
   NotificationListenerManager.handleIncomingEvent(evt);
 }
 
-/// Service managing the background notification listener lifecycle, permissions,
+/// Service managing the notification listener lifecycle, permissions,
 /// app filter validation, and SQLite persistence.
 class NotificationListenerManager with ChangeNotifier {
-  // Singleton pattern
   static final NotificationListenerManager instance = NotificationListenerManager._internal();
   NotificationListenerManager._internal();
 
@@ -28,19 +29,21 @@ class NotificationListenerManager with ChangeNotifier {
 
   Stream<NotificationModel> get notificationStream => _notificationStreamController.stream;
 
-  bool _isListening = false;
+  bool _isListening = true;
   bool get isListening => _isListening;
 
   /// Initialize listener service and register background handler
   Future<void> initialize() async {
     try {
+      WidgetsFlutterBinding.ensureInitialized();
+      _isListening = await SecureStorageService.instance.isTrackingEnabled();
+
       await NotificationsListener.initialize(
         callbackHandle: _notificationEventCallback,
       );
-      _isListening = await NotificationsListener.isRunning ?? false;
       notifyListeners();
     } catch (e) {
-      developer.log('Failed to initialize NotificationsListener: $e', name: 'NotificationListenerManager');
+      developer.log('Initialization notice for NotificationsListener: $e', name: 'NotificationListenerManager');
     }
   }
 
@@ -63,78 +66,82 @@ class NotificationListenerManager with ChangeNotifier {
     }
   }
 
-  /// Start background foreground notification listener service
-  Future<bool> startListening() async {
+  /// Toggle notification tracking master switch
+  Future<bool> toggleTracking(bool enable) async {
     try {
-      final hasPerm = await hasPermission();
-      if (!hasPerm) {
-        await requestPermission();
-        return false;
-      }
-
-      await NotificationsListener.startService(
-        title: "Smart Notification Tracker",
-        description: "Monitoring incoming notifications in the background",
-      );
-      _isListening = true;
+      await SecureStorageService.instance.setTrackingEnabled(enable);
+      _isListening = enable;
       notifyListeners();
       return true;
     } catch (e) {
-      developer.log('Error starting listener service: $e', name: 'NotificationListenerManager');
-      _isListening = false;
-      notifyListeners();
+      developer.log('Error toggling tracking: $e', name: 'NotificationListenerManager');
       return false;
     }
   }
 
-  /// Stop background notification listener service
-  Future<void> stopListening() async {
-    try {
-      await NotificationsListener.stopService();
-      _isListening = false;
-      notifyListeners();
-    } catch (e) {
-      developer.log('Error stopping listener service: $e', name: 'NotificationListenerManager');
-    }
+  /// Start background notification tracking
+  Future<bool> startListening() async {
+    return await toggleTracking(true);
   }
 
-  /// Process incoming notification event from background isolate or main thread
+  /// Stop background notification tracking
+  Future<void> stopListening() async {
+    await toggleTracking(false);
+  }
+
+  /// Process incoming notification event safely from background isolate or main thread
   /// # O(1) time, O(1) space
   static Future<void> handleIncomingEvent(NotificationEvent evt) async {
-    final String packageName = evt.packageName ?? 'unknown.app';
-    final String title = (evt.title ?? '').trim();
-    final String body = (evt.text ?? evt.message ?? '').trim();
+    try {
+      WidgetsFlutterBinding.ensureInitialized();
 
-    // Ignore empty/system heartbeats without informative content
-    if (title.isEmpty && body.isEmpty) {
-      return;
-    }
+      // Check master tracking switch
+      final isEnabled = await SecureStorageService.instance.isTrackingEnabled();
+      if (!isEnabled) {
+        return;
+      }
 
-    final String appName = _resolveHumanReadableAppName(packageName);
-    final int timestamp = evt.createAt?.millisecondsSinceEpoch ?? DateTime.now().millisecondsSinceEpoch;
+      final String packageName = evt.packageName ?? 'unknown.app';
+      final String title = (evt.title ?? '').trim();
+      final String body = (evt.text ?? evt.message ?? '').trim();
 
-    final notification = NotificationModel(
-      packageName: packageName,
-      appName: appName,
-      title: title.isEmpty ? appName : title,
-      body: body,
-      timestamp: timestamp,
-    );
+      // Ignore empty or system ping events
+      if (title.isEmpty && body.isEmpty) {
+        return;
+      }
 
-    // Verify filter & persist into SQLite
-    final insertedId = await DatabaseHelper.instance.insertNotification(notification);
+      // Verify if app is allowed by user filter rules
+      final isAllowed = await DatabaseHelper.instance.isAppAllowed(packageName);
+      if (!isAllowed) {
+        return;
+      }
 
-    if (insertedId != null) {
-      final persistedNotification = notification.copyWith(id: insertedId);
-      _notificationStreamController.add(persistedNotification);
-      instance.notifyListeners();
+      final String appName = _resolveHumanReadableAppName(packageName);
+      final int timestamp = evt.createAt?.millisecondsSinceEpoch ?? DateTime.now().millisecondsSinceEpoch;
+
+      final notification = NotificationModel(
+        packageName: packageName,
+        appName: appName,
+        title: title.isEmpty ? appName : title,
+        body: body,
+        timestamp: timestamp,
+      );
+
+      final insertedId = await DatabaseHelper.instance.insertNotification(notification);
+
+      if (insertedId != null) {
+        final persistedNotification = notification.copyWith(id: insertedId);
+        _notificationStreamController.add(persistedNotification);
+        instance.notifyListeners();
+      }
+    } catch (e) {
+      developer.log('Error in notification event handler: $e', name: 'NotificationListenerManager');
     }
   }
 
   /// Resolve readable App Name from package identifier
   /// # O(1) time, O(1) space
   static String _resolveHumanReadableAppName(String packageName) {
-    // Known app mappings
     final knownMappings = <String, String>{
       'com.whatsapp': 'WhatsApp',
       'com.instagram.android': 'Instagram',
@@ -158,14 +165,16 @@ class NotificationListenerManager with ChangeNotifier {
       return knownMappings[packageName]!;
     }
 
-    // Heuristic: Extract and capitalize the most descriptive segment
+    // Extract and format last meaningful identifier
     final parts = packageName.split('.');
     if (parts.isNotEmpty) {
       String segment = parts.last;
       if (segment.toLowerCase() == 'android' && parts.length > 1) {
         segment = parts[parts.length - 2];
       }
-      return segment[0].toUpperCase() + segment.substring(1);
+      if (segment.isNotEmpty) {
+        return segment[0].toUpperCase() + segment.substring(1);
+      }
     }
 
     return packageName;

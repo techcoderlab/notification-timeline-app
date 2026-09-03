@@ -6,9 +6,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../core/database/database_helper.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../auth/presentation/passcode_modal.dart';
 import '../../settings/presentation/app_filter_screen.dart';
 import '../../settings/presentation/export_dialog.dart';
+import '../../settings/presentation/settings_screen.dart';
 import '../data/notification_listener_service.dart';
 import '../models/notification_model.dart';
 import 'widgets/date_header.dart';
@@ -30,7 +30,7 @@ class _TimelineScreenState extends State<TimelineScreen> with WidgetsBindingObse
   List<NotificationModel> _notifications = [];
   bool _isLoading = true;
   bool _hasPermission = false;
-  bool _isServiceRunning = false;
+  bool _isTracking = true;
   String _searchQuery = '';
   StreamSubscription<NotificationModel>? _streamSubscription;
   Timer? _debounceTimer;
@@ -73,11 +73,11 @@ class _TimelineScreenState extends State<TimelineScreen> with WidgetsBindingObse
 
   Future<void> _checkPermissionsAndStatus() async {
     final hasPerm = await NotificationListenerManager.instance.hasPermission();
-    final isRunning = NotificationListenerManager.instance.isListening;
+    final isListening = NotificationListenerManager.instance.isListening;
     if (mounted) {
       setState(() {
         _hasPermission = hasPerm;
-        _isServiceRunning = isRunning;
+        _isTracking = isListening;
       });
     }
   }
@@ -150,33 +150,6 @@ class _TimelineScreenState extends State<TimelineScreen> with WidgetsBindingObse
     }
   }
 
-  /// Clear all notifications with confirmation
-  Future<void> _promptClearAll() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Clear Timeline?'),
-        content: const Text('This will delete all recorded notifications permanently. This action cannot be undone.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.accentRose),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Clear All'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      await DatabaseHelper.instance.clearAllNotifications();
-      _loadNotifications();
-    }
-  }
-
   /// Group flat notification list into date dictionary
   /// # O(n) time, O(n) space
   Map<String, List<NotificationModel>> _groupNotificationsByDate(List<NotificationModel> list) {
@@ -199,13 +172,30 @@ class _TimelineScreenState extends State<TimelineScreen> with WidgetsBindingObse
 
     return Scaffold(
       appBar: AppBar(
-        title: const Column(
+        title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Timeline', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
-            Text(
-              'Notification tracker & stream',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: AppTheme.darkTextMuted),
+            const Text('Timeline', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+            Row(
+              children: [
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: _isTracking ? AppTheme.accentEmerald : AppTheme.accentAmber,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  _isTracking ? 'Tracker Active' : 'Tracker Paused',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: isDark ? AppTheme.darkTextMuted : AppTheme.lightTextMuted,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -213,7 +203,7 @@ class _TimelineScreenState extends State<TimelineScreen> with WidgetsBindingObse
           // App Filters Screen Trigger
           IconButton(
             icon: const Icon(Icons.tune_rounded, size: 22),
-            tooltip: 'App Filter Rules',
+            tooltip: 'App Filters',
             onPressed: () async {
               await Navigator.push(
                 context,
@@ -233,72 +223,20 @@ class _TimelineScreenState extends State<TimelineScreen> with WidgetsBindingObse
               );
             },
           ),
-          // Settings / Security Popup Menu
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert_rounded, size: 22),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-              side: BorderSide(color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder),
-            ),
-            color: isDark ? AppTheme.darkSurface : AppTheme.lightSurface,
-            onSelected: (value) async {
-              if (value == 'change_pin') {
-                showModalBottomSheet(
-                  context: context,
-                  isScrollControlled: true,
-                  backgroundColor: Colors.transparent,
-                  builder: (_) => const PasscodeModal(),
-                );
-              } else if (value == 'clear_all') {
-                _promptClearAll();
-              } else if (value == 'toggle_listener') {
-                if (_isServiceRunning) {
-                  await NotificationListenerManager.instance.stopListening();
-                } else {
-                  await NotificationListenerManager.instance.startListening();
-                }
-                _checkPermissionsAndStatus();
-              }
+          // Centralized Settings Screen Trigger
+          IconButton(
+            icon: const Icon(Icons.settings_outlined, size: 22),
+            tooltip: 'Settings',
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SettingsScreen()),
+              );
+              _checkPermissionsAndStatus();
+              _loadNotifications();
             },
-            itemBuilder: (ctx) => [
-              PopupMenuItem(
-                value: 'toggle_listener',
-                child: Row(
-                  children: [
-                    Icon(
-                      _isServiceRunning ? Icons.pause_circle_outline_rounded : Icons.play_circle_outline_rounded,
-                      size: 20,
-                      color: _isServiceRunning ? AppTheme.accentAmber : AppTheme.accentEmerald,
-                    ),
-                    const SizedBox(width: 10),
-                    Text(_isServiceRunning ? 'Pause Listener' : 'Start Listener'),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'change_pin',
-                child: Row(
-                  children: [
-                    Icon(Icons.password_rounded, size: 20, color: AppTheme.primaryLight),
-                    const SizedBox(width: 10),
-                    Text('Change Passcode'),
-                  ],
-                ),
-              ),
-              const PopupMenuDivider(),
-              const PopupMenuItem(
-                value: 'clear_all',
-                child: Row(
-                  children: [
-                    Icon(Icons.delete_outline_rounded, size: 20, color: AppTheme.accentRose),
-                    const SizedBox(width: 10),
-                    Text('Clear All History', style: TextStyle(color: AppTheme.accentRose)),
-                  ],
-                ),
-              ),
-            ],
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 4),
         ],
       ),
       body: Column(
