@@ -1,0 +1,57 @@
+# ─────────────────────────────────────────────────────
+# Module   : .github/workflows/build_apk.yml (CI/CD Pipeline)
+# ─────────────────────────────────────────────────────
+name: Build Android Release APK
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Test and Build APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Java JDK (Version 17)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Setup Flutter SDK
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Verify Flutter Installation
+        run: flutter doctor -v
+
+      - name: Install Project Dependencies
+        run: flutter pub get
+
+      - name: Run Static Code Analysis
+        run: flutter analyze --no-fatal-infos
+
+      - name: Execute Unit & Architecture Tests
+        run: flutter test --no-pub
+
+      - name: Build Release APK
+        run: flutter build apk --release --split-per-abi=false
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: smart-notification-tracker-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 14
