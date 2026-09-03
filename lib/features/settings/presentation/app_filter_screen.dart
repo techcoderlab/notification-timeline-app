@@ -37,7 +37,7 @@ class _AppFilterScreenState extends State<AppFilterScreen> {
   }
 
   @override
-  void dispose) {
+  void dispose() {
     _searchController.dispose();
     super.dispose();
   }
@@ -290,7 +290,7 @@ class _AppFilterScreenState extends State<AppFilterScreen> {
                                       color: (isDark
                                               ? AppTheme.primaryLight
                                               : AppTheme.primaryDark)
-                                          .withOpacity(0.12),
+                                          .withValues(alpha: 0.12),
                                       borderRadius: BorderRadius.circular(10),
                                     ),
                                     child: Center(
@@ -341,7 +341,7 @@ class _AppFilterScreenState extends State<AppFilterScreen> {
                                                               .darkTextMuted
                                                           : AppTheme
                                                               .lightTextMuted)
-                                                      .withOpacity(0.2),
+                                                      .withValues(alpha: 0.2),
                                                   borderRadius:
                                                       BorderRadius.circular(6),
                                                 ),

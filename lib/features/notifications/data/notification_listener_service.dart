@@ -5,7 +5,6 @@
 import 'dart:async';
 import 'dart:developer' as developer;
 import 'package:flutter/widgets.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_notification_listener/flutter_notification_listener.dart';
 import '../../../core/database/database_helper.dart';
 import '../../../core/security/secure_storage.dart';

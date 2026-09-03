@@ -67,7 +67,7 @@ class TimelineCard extends StatelessWidget {
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: primaryAccent.withOpacity(0.35),
+                          color: primaryAccent.withValues(alpha: 0.35),
                           blurRadius: 6,
                           spreadRadius: 1,
                         ),
@@ -90,7 +90,7 @@ class TimelineCard extends StatelessWidget {
                   alignment: Alignment.centerRight,
                   padding: const EdgeInsets.only(right: 16),
                   decoration: BoxDecoration(
-                    color: AppTheme.accentRose.withOpacity(0.9),
+                    color: AppTheme.accentRose.withValues(alpha: 0.9),
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: const Icon(Icons.delete_outline_rounded, color: Colors.white, size: 22),

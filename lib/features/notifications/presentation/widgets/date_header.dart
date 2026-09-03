@@ -59,7 +59,7 @@ class DateHeaderWidget extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
-              color: (isDark ? AppTheme.primary : AppTheme.primaryDark).withOpacity(0.12),
+              color: (isDark ? AppTheme.primary : AppTheme.primaryDark).withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(

@@ -154,7 +154,7 @@ class _ExportDialogState extends State<ExportDialog> {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: primaryAccent.withOpacity(0.12),
+                    color: primaryAccent.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(Icons.ios_share_rounded, size: 22, color: primaryAccent),
@@ -224,7 +224,7 @@ class _ExportDialogState extends State<ExportDialog> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
-                color: (isDark ? AppTheme.primary : AppTheme.primaryDark).withOpacity(0.08),
+                color: (isDark ? AppTheme.primary : AppTheme.primaryDark).withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(

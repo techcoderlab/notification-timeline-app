@@ -140,9 +140,9 @@ class _LockScreenState extends State<LockScreen> with SingleTickerProviderStateM
                 width: 64,
                 height: 64,
                 decoration: BoxDecoration(
-                  color: primaryAccent.withOpacity(0.12),
+                  color: primaryAccent.withValues(alpha: 0.12),
                   shape: BoxShape.circle,
-                  border: Border.all(color: primaryAccent.withOpacity(0.25), width: 1.5),
+                  border: Border.all(color: primaryAccent.withValues(alpha: 0.25), width: 1.5),
                 ),
                 child: Icon(Icons.shield_outlined, size: 30, color: primaryAccent),
               ),

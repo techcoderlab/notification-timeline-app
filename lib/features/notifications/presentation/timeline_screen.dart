@@ -247,9 +247,9 @@ class _TimelineScreenState extends State<TimelineScreen> with WidgetsBindingObse
               margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
-                color: AppTheme.accentAmber.withOpacity(0.12),
+                color: AppTheme.accentAmber.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppTheme.accentAmber.withOpacity(0.3), width: 1),
+                border: Border.all(color: AppTheme.accentAmber.withValues(alpha: 0.3), width: 1),
               ),
               child: Row(
                 children: [
