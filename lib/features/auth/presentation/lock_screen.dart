@@ -5,7 +5,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:lucide_icons/lucide_icons.dart';
 import '../../../core/security/biometric_service.dart';
 import '../../../core/security/secure_storage.dart';
 import '../../../core/theme/app_theme.dart';
@@ -145,7 +144,7 @@ class _LockScreenState extends State<LockScreen> with SingleTickerProviderStateM
                   shape: BoxShape.circle,
                   border: Border.all(color: primaryAccent.withOpacity(0.25), width: 1.5),
                 ),
-                child: Icon(LucideIcons.shieldCheck, size: 30, color: primaryAccent),
+                child: Icon(Icons.shield_outlined, size: 30, color: primaryAccent),
               ),
               const SizedBox(height: 16),
               const Text(
@@ -257,14 +256,14 @@ class _LockScreenState extends State<LockScreen> with SingleTickerProviderStateM
             children: [
               // Biometric Trigger Button
               _buildActionKey(
-                icon: LucideIcons.fingerprint,
+                icon: Icons.fingerprint_rounded,
                 isDark: isDark,
                 onTap: _attemptBiometricAuth,
               ),
               _buildKey('0', isDark),
               // Backspace Button
               _buildActionKey(
-                icon: LucideIcons.delete,
+                icon: Icons.backspace_outlined,
                 isDark: isDark,
                 onTap: _onBackspace,
               ),
@@ -320,7 +319,7 @@ class _LockScreenState extends State<LockScreen> with SingleTickerProviderStateM
           child: Center(
             child: Icon(
               icon,
-              size: 24,
+              size: 26,
               color: isDark ? AppTheme.darkTextSecondary : AppTheme.lightTextSecondary,
             ),
           ),

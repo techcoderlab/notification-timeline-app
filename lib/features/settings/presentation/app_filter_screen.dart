@@ -3,7 +3,6 @@
 // ─────────────────────────────────────────────────────
 
 import 'package:flutter/material.dart';
-import 'package:lucide_icons/lucide_icons.dart';
 import '../../../core/database/database_helper.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../notifications/models/notification_model.dart';
@@ -96,12 +95,12 @@ class _AppFilterScreenState extends State<AppFilterScreen> {
         actions: [
           TextButton.icon(
             onPressed: () => _toggleAll(true),
-            icon: const Icon(LucideIcons.checkCheck, size: 16),
+            icon: const Icon(Icons.done_all_rounded, size: 18),
             label: const Text('All On', style: TextStyle(fontSize: 12)),
           ),
           TextButton.icon(
             onPressed: () => _toggleAll(false),
-            icon: const Icon(LucideIcons.ban, size: 16, color: AppTheme.accentRose),
+            icon: const Icon(Icons.block_rounded, size: 18, color: AppTheme.accentRose),
             label: const Text('All Off', style: TextStyle(fontSize: 12, color: AppTheme.accentRose)),
           ),
           const SizedBox(width: 8),
@@ -117,7 +116,7 @@ class _AppFilterScreenState extends State<AppFilterScreen> {
               onChanged: (val) => setState(() => _searchQuery = val),
               decoration: InputDecoration(
                 hintText: 'Search applications...',
-                prefixIcon: const Icon(LucideIcons.search, size: 18),
+                prefixIcon: const Icon(Icons.search_rounded, size: 20),
                 suffixIcon: _searchController.text.isNotEmpty
                     ? IconButton(
                         icon: const Icon(Icons.close_rounded, size: 18),
@@ -230,7 +229,7 @@ class _AppFilterScreenState extends State<AppFilterScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              LucideIcons.slidersHorizontal,
+              Icons.tune_rounded,
               size: 40,
               color: isDark ? AppTheme.darkTextMuted : AppTheme.lightTextMuted,
             ),

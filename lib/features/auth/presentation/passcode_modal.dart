@@ -4,7 +4,6 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:lucide_icons/lucide_icons.dart';
 import '../../../core/security/biometric_service.dart';
 import '../../../core/security/secure_storage.dart';
 import '../../../core/theme/app_theme.dart';
@@ -169,7 +168,7 @@ class _PasscodeModalState extends State<PasscodeModal> {
                 children: [
                   const Row(
                     children: [
-                      Icon(LucideIcons.fingerprint, size: 20, color: AppTheme.primaryLight),
+                      Icon(Icons.fingerprint_rounded, size: 22, color: AppTheme.primaryLight),
                       SizedBox(width: 10),
                       Text('Biometric Unlock', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                     ],
@@ -280,8 +279,8 @@ class _PasscodeModalState extends State<PasscodeModal> {
                     height: 58,
                     child: Center(
                       child: Icon(
-                        LucideIcons.delete,
-                        size: 20,
+                        Icons.backspace_outlined,
+                        size: 22,
                         color: isDark ? AppTheme.darkTextSecondary : AppTheme.lightTextSecondary,
                       ),
                     ),

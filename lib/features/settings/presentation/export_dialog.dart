@@ -4,7 +4,6 @@
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:lucide_icons/lucide_icons.dart';
 import '../../../core/database/database_helper.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/json_exporter.dart';
@@ -158,7 +157,7 @@ class _ExportDialogState extends State<ExportDialog> {
                     color: primaryAccent.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(LucideIcons.share2, size: 22, color: primaryAccent),
+                  child: Icon(Icons.ios_share_rounded, size: 22, color: primaryAccent),
                 ),
                 const SizedBox(width: 14),
                 const Expanded(
@@ -206,7 +205,7 @@ class _ExportDialogState extends State<ExportDialog> {
                   children: [
                     Row(
                       children: [
-                        const Icon(LucideIcons.calendar, size: 16, color: AppTheme.darkTextMuted),
+                        const Icon(Icons.calendar_month_rounded, size: 18, color: AppTheme.darkTextMuted),
                         const SizedBox(width: 8),
                         Text(
                           '${dateFormat.format(_startDate)}  —  ${dateFormat.format(_endDate)}',
@@ -214,7 +213,7 @@ class _ExportDialogState extends State<ExportDialog> {
                         ),
                       ],
                     ),
-                    const Icon(LucideIcons.chevronRight, size: 16, color: AppTheme.darkTextMuted),
+                    const Icon(Icons.chevron_right_rounded, size: 18, color: AppTheme.darkTextMuted),
                   ],
                 ),
               ),
@@ -230,7 +229,7 @@ class _ExportDialogState extends State<ExportDialog> {
               ),
               child: Row(
                 children: [
-                  Icon(LucideIcons.database, size: 16, color: primaryAccent),
+                  Icon(Icons.analytics_outlined, size: 18, color: primaryAccent),
                   const SizedBox(width: 8),
                   Text(
                     _isCounting ? 'Counting records...' : '$_matchingRecordCount records found',

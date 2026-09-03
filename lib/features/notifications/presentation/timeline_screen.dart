@@ -4,7 +4,6 @@
 
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:lucide_icons/lucide_icons.dart';
 import '../../../core/database/database_helper.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/presentation/passcode_modal.dart';
@@ -213,7 +212,7 @@ class _TimelineScreenState extends State<TimelineScreen> with WidgetsBindingObse
         actions: [
           // App Filters Screen Trigger
           IconButton(
-            icon: const Icon(LucideIcons.filter, size: 20),
+            icon: const Icon(Icons.tune_rounded, size: 22),
             tooltip: 'App Filter Rules',
             onPressed: () async {
               await Navigator.push(
@@ -225,7 +224,7 @@ class _TimelineScreenState extends State<TimelineScreen> with WidgetsBindingObse
           ),
           // Export JSON Trigger
           IconButton(
-            icon: const Icon(LucideIcons.share2, size: 20),
+            icon: const Icon(Icons.share_rounded, size: 22),
             tooltip: 'Export JSON',
             onPressed: () {
               showDialog(
@@ -236,7 +235,7 @@ class _TimelineScreenState extends State<TimelineScreen> with WidgetsBindingObse
           ),
           // Settings / Security Popup Menu
           PopupMenuButton<String>(
-            icon: const Icon(LucideIcons.moreVertical, size: 20),
+            icon: const Icon(Icons.more_vert_rounded, size: 22),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
               side: BorderSide(color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder),
@@ -267,8 +266,8 @@ class _TimelineScreenState extends State<TimelineScreen> with WidgetsBindingObse
                 child: Row(
                   children: [
                     Icon(
-                      _isServiceRunning ? LucideIcons.pauseCircle : LucideIcons.playCircle,
-                      size: 18,
+                      _isServiceRunning ? Icons.pause_circle_outline_rounded : Icons.play_circle_outline_rounded,
+                      size: 20,
                       color: _isServiceRunning ? AppTheme.accentAmber : AppTheme.accentEmerald,
                     ),
                     const SizedBox(width: 10),
@@ -280,7 +279,7 @@ class _TimelineScreenState extends State<TimelineScreen> with WidgetsBindingObse
                 value: 'change_pin',
                 child: Row(
                   children: [
-                    Icon(LucideIcons.keyRound, size: 18, color: AppTheme.primaryLight),
+                    Icon(Icons.password_rounded, size: 20, color: AppTheme.primaryLight),
                     const SizedBox(width: 10),
                     Text('Change Passcode'),
                   ],
@@ -291,7 +290,7 @@ class _TimelineScreenState extends State<TimelineScreen> with WidgetsBindingObse
                 value: 'clear_all',
                 child: Row(
                   children: [
-                    Icon(LucideIcons.trash2, size: 18, color: AppTheme.accentRose),
+                    Icon(Icons.delete_outline_rounded, size: 20, color: AppTheme.accentRose),
                     const SizedBox(width: 10),
                     Text('Clear All History', style: TextStyle(color: AppTheme.accentRose)),
                   ],
@@ -316,7 +315,7 @@ class _TimelineScreenState extends State<TimelineScreen> with WidgetsBindingObse
               ),
               child: Row(
                 children: [
-                  const Icon(LucideIcons.alertTriangle, size: 20, color: AppTheme.accentAmber),
+                  const Icon(Icons.warning_amber_rounded, size: 22, color: AppTheme.accentAmber),
                   const SizedBox(width: 10),
                   const Expanded(
                     child: Text(
@@ -347,7 +346,7 @@ class _TimelineScreenState extends State<TimelineScreen> with WidgetsBindingObse
               style: const TextStyle(fontSize: 14),
               decoration: InputDecoration(
                 hintText: 'Search notifications by app, title, or body...',
-                prefixIcon: const Icon(LucideIcons.search, size: 18, color: AppTheme.darkTextMuted),
+                prefixIcon: const Icon(Icons.search_rounded, size: 20, color: AppTheme.darkTextMuted),
                 suffixIcon: _searchController.text.isNotEmpty
                     ? IconButton(
                         icon: const Icon(Icons.close_rounded, size: 18),
@@ -426,7 +425,7 @@ class _TimelineScreenState extends State<TimelineScreen> with WidgetsBindingObse
                 border: Border.all(color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder),
               ),
               child: Icon(
-                _searchQuery.isNotEmpty ? LucideIcons.searchX : LucideIcons.bellOff,
+                _searchQuery.isNotEmpty ? Icons.search_off_rounded : Icons.notifications_off_outlined,
                 size: 36,
                 color: isDark ? AppTheme.darkTextMuted : AppTheme.lightTextMuted,
               ),

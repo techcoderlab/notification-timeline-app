@@ -29,20 +29,17 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Recreate Modern Android V2 Folder
-        run: |
-          rm -rf android/
-          flutter create . --platforms=android
-          sed -i 's/<application/<uses-permission android:name="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"\/>\n    <uses-permission android:name="android.permission.USE_BIOMETRIC"\/>\n    <application/g' android/app/src/main/AndroidManifest.xml
+      - name: Verify Flutter Installation
+        run: flutter doctor -v
 
       - name: Install Project Dependencies
         run: flutter pub get
 
       - name: Run Static Code Analysis
-        run: flutter analyze --no-fatal-infos || true
+        run: flutter analyze --no-fatal-infos
 
       - name: Execute Unit & Architecture Tests
-        run: flutter test --no-pub || true
+        run: flutter test --no-pub
 
       - name: Build Release APK
         run: flutter build apk --release
