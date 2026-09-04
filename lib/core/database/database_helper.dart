@@ -93,8 +93,8 @@ class DatabaseHelper {
     } catch (e) {
       _dbOpenCompleter = null;
       if (!completer.isCompleted) {
-        // Attach listener to prevent unhandled asynchronous Zone error in Flutter test harness
-        completer.future.catchError((_) => null);
+        // Suppress unhandled asynchronous Zone error in Flutter test harness
+        completer.future.ignore();
         completer.completeError(e);
       }
       rethrow;

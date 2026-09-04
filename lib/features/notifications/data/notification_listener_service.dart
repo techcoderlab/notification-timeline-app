@@ -135,7 +135,7 @@ class NotificationListenerManager with ChangeNotifier {
   Future<void> _processEventInUI(NotificationEvent evt) async {
     // Notify listeners so timeline can refresh from SQLite
     notifyListeners();
-    _notificationStreamController.add(NotificationModel(packageName: '', appName: '', title: '', body: '', timestamp: 0));
+    _notificationStreamController.add(const NotificationModel(packageName: '', appName: '', title: '', body: '', timestamp: 0));
   }
 
   /// Process incoming notification event safely from background isolate or main thread
