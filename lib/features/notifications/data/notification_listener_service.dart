@@ -68,6 +68,9 @@ class NotificationListenerManager with ChangeNotifier {
       _uiReceivePort.listen((message) {
         if (message is NotificationEvent) {
           _processEventInUI(message);
+        } else if (message is String && message.startsWith("ERROR:")) {
+           // Broadcast the error to your timeline stream or show a UI alert
+           _notificationStreamController.addError(message);
         }
       });
 
@@ -254,13 +257,13 @@ class NotificationListenerManager with ChangeNotifier {
         return;
       }
 
-      // Verify if app is allowed by user filter rules
-      final isAllowed = await DatabaseHelper.instance.isAppAllowed(packageName);
-      if (!isAllowed) {
-        developer.log('App filtered out by user: $packageName',
-            name: 'NotificationListenerManager');
-        return;
-      }
+      // 🛑 TEMPORARILY COMMENT OUT THE FILTER TO TEST
+      // final isAllowed = await DatabaseHelper.instance.isAppAllowed(packageName);
+      // if (!isAllowed) {
+      //   developer.log('App filtered out by user: $packageName',
+      //       name: 'NotificationListenerManager');
+      //   return;
+      // }
 
       final String appName = _resolveHumanReadableAppName(packageName);
       final int timestamp = evt.createAt?.millisecondsSinceEpoch ??
@@ -282,6 +285,10 @@ class NotificationListenerManager with ChangeNotifier {
     } catch (e, st) {
       developer.log('Error in notification event handler: $e',
           error: e, stackTrace: st, name: 'NotificationListenerManager');
+
+      // Send the error back to the UI isolate so we can see it!
+      final SendPort? sendCustom = IsolateNameServer.lookupPortByName("_listener_");
+      sendCustom?.send("ERROR: $e");
     }
   }
 
