@@ -42,6 +42,11 @@ class DatabaseHelper {
   static Database? _database;
   static Completer<Database>? _dbOpenCompleter;
 
+  /// For unit and widget testing: allows injecting an in-memory or mock database instance
+  static void setTestDatabase(Database? db) {
+    _database = db;
+  }
+
   /// Retrieve active database instance with mutex-style lazy initialization
   /// # O(1) time, O(1) space
   Future<Database> get database async {
@@ -53,7 +58,9 @@ class DatabaseHelper {
       return _dbOpenCompleter!.future;
     }
 
-    _dbOpenCompleter = Completer<Database>();
+    final completer = Completer<Database>();
+    _dbOpenCompleter = completer;
+
     try {
       final dbPath = await getDatabasesPath();
       final path = join(dbPath, _dbName);
@@ -78,11 +85,18 @@ class DatabaseHelper {
       ''');
 
       _database = db;
-      _dbOpenCompleter!.complete(db);
+      if (!completer.isCompleted) {
+        completer.complete(db);
+      }
+      _dbOpenCompleter = null;
       return db;
     } catch (e) {
-      _dbOpenCompleter!.completeError(e);
       _dbOpenCompleter = null;
+      if (!completer.isCompleted) {
+        // Attach listener to prevent unhandled asynchronous Zone error in Flutter test harness
+        completer.future.catchError((_) => null);
+        completer.completeError(e);
+      }
       rethrow;
     }
   }
