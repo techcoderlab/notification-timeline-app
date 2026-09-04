@@ -76,6 +76,28 @@ void main() {
           return null;
       }
     });
+
+    // 4. Mock flutter_notification_listener platform channel
+    // Required when TimelineScreen navigates in and calls NotificationListenerManager.initialize()
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(const MethodChannel('flutter_notification_listener'), (MethodCall methodCall) async {
+      switch (methodCall.method) {
+        case 'plugin.initialize':
+          return true;
+        case 'plugin.hasPermission':
+          return false;
+        case 'plugin.openPermissionSettings':
+          return null;
+        case 'plugin.isRunning':
+          return false;
+        case 'plugin.startService':
+          return true;
+        case 'plugin.stopService':
+          return true;
+        default:
+          return null;
+      }
+    });
   });
 
   tearDown(() {
@@ -85,6 +107,8 @@ void main() {
         .setMockMethodCallHandler(const MethodChannel('plugins.it_nomads.com/flutter_secure_storage'), null);
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(const MethodChannel('plugins.flutter.io/local_auth'), null);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(const MethodChannel('flutter_notification_listener'), null);
   });
 
   testWidgets('SmartNotificationTrackerApp boots with LockScreen', (WidgetTester tester) async {
@@ -123,7 +147,11 @@ void main() {
       await tester.tap(find.text(digit));
       await tester.pump(const Duration(milliseconds: 50));
     }
-    await tester.pumpAndSettle();
+
+    // Use pump() with generous duration instead of pumpAndSettle() because
+    // TimelineScreen has a live broadcast StreamSubscription listener that
+    // never completes, causing pumpAndSettle() to time out indefinitely.
+    await tester.pump(const Duration(seconds: 2));
 
     // Verify successful navigation to TimelineScreen
     expect(find.byType(TimelineScreen), findsOneWidget);
