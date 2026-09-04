@@ -28,6 +28,8 @@ class NotificationListenerManager with ChangeNotifier {
   static final NotificationListenerManager instance = NotificationListenerManager._internal();
   NotificationListenerManager._internal();
 
+  static final ReceivePort _uiReceivePort = ReceivePort();
+
   static final StreamController<NotificationModel> _notificationStreamController =
       StreamController<NotificationModel>.broadcast();
 
@@ -47,9 +49,9 @@ class NotificationListenerManager with ChangeNotifier {
       );
       
       IsolateNameServer.removePortNameMapping("_listener_");
-      IsolateNameServer.registerPortWithName(NotificationsListener.receivePort.sendPort, "_listener_");
+      IsolateNameServer.registerPortWithName(_uiReceivePort.sendPort, "_listener_");
       
-      NotificationsListener.receivePort.listen((message) {
+      _uiReceivePort.listen((message) {
         if (message is NotificationEvent) {
            _processEventInUI(message);
         }
@@ -226,6 +228,7 @@ class NotificationListenerManager with ChangeNotifier {
 
   @override
   void dispose() {
+    _uiReceivePort.close();
     _notificationStreamController.close();
     super.dispose();
   }
