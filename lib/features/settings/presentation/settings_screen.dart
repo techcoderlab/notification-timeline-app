@@ -23,7 +23,7 @@ class SettingsScreen extends StatefulWidget {
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObserver {
   bool _isTracking = true;
   bool _hasPermission = false;
   bool _biometricsEnabled = true;
@@ -34,32 +34,52 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // Instant pre-population from current memory state to prevent switch flicker
+    _isTracking = NotificationListenerManager.instance.isListening;
+    _currentTheme = ThemeService.instance.themeMode;
     _loadAllSettings();
   }
 
-  Future<void> _loadAllSettings() async {
-    final tracking = await SecureStorageService.instance.isTrackingEnabled();
-    final perm = await NotificationListenerManager.instance.hasPermission();
-    final bioPref = await SecureStorageService.instance.isBiometricsEnabled();
-    final bioAvail = await BiometricService.instance.isBiometricsAvailable();
-    final count = await DatabaseHelper.instance.getNotificationsCount();
-    final theme = ThemeService.instance.themeMode;
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
 
-    if (mounted) {
-      setState(() {
-        _isTracking = tracking;
-        _hasPermission = perm;
-        _biometricsEnabled = bioPref;
-        _canCheckBiometrics = bioAvail;
-        _totalRecordCount = count;
-        _currentTheme = theme;
-      });
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Re-verify system permissions and refreshed states when returning from Android Settings
+      _loadAllSettings();
     }
   }
 
+  Future<void> _loadAllSettings() async {
+    try {
+      final tracking = await SecureStorageService.instance.isTrackingEnabled();
+      final perm = await NotificationListenerManager.instance.hasPermission();
+      final bioPref = await SecureStorageService.instance.isBiometricsEnabled();
+      final bioAvail = await BiometricService.instance.isBiometricsAvailable();
+      final count = await DatabaseHelper.instance.getNotificationsCount();
+      final theme = ThemeService.instance.themeMode;
+
+      if (mounted) {
+        setState(() {
+          _isTracking = tracking;
+          _hasPermission = perm;
+          _biometricsEnabled = bioPref;
+          _canCheckBiometrics = bioAvail;
+          _totalRecordCount = count;
+          _currentTheme = theme;
+        });
+      }
+    } catch (_) {}
+  }
+
   Future<void> _toggleTracking(bool value) async {
-    await NotificationListenerManager.instance.toggleTracking(value);
     setState(() => _isTracking = value);
+    await NotificationListenerManager.instance.toggleTracking(value);
   }
 
   Future<void> _changeTheme(ThemeMode mode) async {

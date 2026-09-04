@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../../../core/database/database_helper.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../notifications/models/notification_model.dart';
+import '../../notifications/presentation/widgets/app_tracker_icon.dart';
 
 /// App filter filter mode
 enum AppFilterCategory { all, user, system }
@@ -42,15 +43,31 @@ class _AppFilterScreenState extends State<AppFilterScreen> {
     super.dispose();
   }
 
+  static const List<Map<String, dynamic>> _popularDefaultApps = [
+    {'packageName': 'com.whatsapp', 'appName': 'WhatsApp', 'isSystemApp': false},
+    {'packageName': 'com.google.android.gm', 'appName': 'Gmail', 'isSystemApp': false},
+    {'packageName': 'com.google.android.youtube', 'appName': 'YouTube', 'isSystemApp': false},
+    {'packageName': 'org.telegram.messenger', 'appName': 'Telegram', 'isSystemApp': false},
+    {'packageName': 'com.instagram.android', 'appName': 'Instagram', 'isSystemApp': false},
+    {'packageName': 'com.facebook.katana', 'appName': 'Facebook', 'isSystemApp': false},
+    {'packageName': 'com.facebook.orca', 'appName': 'Messenger', 'isSystemApp': false},
+    {'packageName': 'com.google.android.apps.messaging', 'appName': 'Messages', 'isSystemApp': false},
+    {'packageName': 'com.android.chrome', 'appName': 'Chrome', 'isSystemApp': false},
+    {'packageName': 'com.spotify.music', 'appName': 'Spotify', 'isSystemApp': false},
+    {'packageName': 'com.twitter.android', 'appName': 'X (Twitter)', 'isSystemApp': false},
+    {'packageName': 'com.android.vending', 'appName': 'Google Play Store', 'isSystemApp': true},
+  ];
+
   /// Load device installed apps from Android MethodChannel and merge with SQLite filter states
   /// # O(n log n) time due to sorting, O(n) space
   Future<void> _loadInstalledAppsAndFilters() async {
     setState(() => _isLoading = true);
 
     try {
-      // 1. Fetch installed packages from Android host via platform channel
-      final List<dynamic>? installedList =
-          await _platformChannel.invokeMethod<List<dynamic>>('getInstalledApps');
+      // 1. Fetch installed packages from Android host via platform channel with 5s timeout
+      final List<dynamic>? installedList = await _platformChannel
+          .invokeMethod<List<dynamic>>('getInstalledApps')
+          .timeout(const Duration(seconds: 5));
 
       // 2. Fetch configured filter states from SQLite
       final List<AppFilterModel> dbFilters =
@@ -80,8 +97,10 @@ class _AppFilterScreenState extends State<AppFilterScreen> {
             }
           }
         }
-      } else {
-        // Fallback: Use filters already recorded in SQLite if method channel is unavailable
+      }
+
+      // Fallback: If platform channel returned no apps, check SQLite
+      if (items.isEmpty && dbFilters.isNotEmpty) {
         for (final f in dbFilters) {
           items.add(AppFilterItem(
             packageName: f.packageName,
@@ -92,28 +111,53 @@ class _AppFilterScreenState extends State<AppFilterScreen> {
         }
       }
 
+      // Final fallback: Seed with popular default apps so screen is never blank
+      if (items.isEmpty) {
+        for (final app in _popularDefaultApps) {
+          items.add(AppFilterItem(
+            packageName: app['packageName'] as String,
+            appName: app['appName'] as String,
+            isEnabled: true,
+            isSystemApp: app['isSystemApp'] as bool,
+          ));
+        }
+      }
+
       if (mounted) {
         setState(() {
           _allApps = items;
-          _isLoading = false;
         });
       }
     } catch (e) {
-      // Graceful fallback to SQLite records
-      final List<AppFilterModel> dbFilters =
-          await DatabaseHelper.instance.getAllAppFilters();
+      // Graceful fallback to SQLite records or default apps
+      try {
+        final List<AppFilterModel> dbFilters =
+            await DatabaseHelper.instance.getAllAppFilters();
+        final List<AppFilterItem> fallbackItems = [];
+        if (dbFilters.isNotEmpty) {
+          fallbackItems.addAll(dbFilters.map((f) => AppFilterItem(
+                packageName: f.packageName,
+                appName: f.appName,
+                isEnabled: f.isEnabled,
+                isSystemApp: false,
+              )));
+        } else {
+          fallbackItems.addAll(_popularDefaultApps.map((app) => AppFilterItem(
+                packageName: app['packageName'] as String,
+                appName: app['appName'] as String,
+                isEnabled: true,
+                isSystemApp: app['isSystemApp'] as bool,
+              )));
+        }
+        if (mounted) {
+          setState(() {
+            _allApps = fallbackItems;
+          });
+        }
+      } catch (_) {}
+    } finally {
       if (mounted) {
-        setState(() {
-          _allApps = dbFilters
-              .map((f) => AppFilterItem(
-                    packageName: f.packageName,
-                    appName: f.appName,
-                    isEnabled: f.isEnabled,
-                    isSystemApp: false,
-                  ))
-              .toList();
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
       }
     }
   }
@@ -282,31 +326,11 @@ class _AppFilterScreenState extends State<AppFilterScreen> {
                                   horizontal: 14, vertical: 10),
                               child: Row(
                                 children: [
-                                  // App Initial Icon Avatar
-                                  Container(
-                                    width: 40,
-                                    height: 40,
-                                    decoration: BoxDecoration(
-                                      color: (isDark
-                                              ? AppTheme.primaryLight
-                                              : AppTheme.primaryDark)
-                                          .withValues(alpha: 0.12),
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    child: Center(
-                                      child: Text(
-                                        item.appName.isNotEmpty
-                                            ? item.appName[0].toUpperCase()
-                                            : '?',
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w700,
-                                          color: isDark
-                                              ? AppTheme.primaryLight
-                                              : AppTheme.primaryDark,
-                                        ),
-                                      ),
-                                    ),
+                                  // App Tracker Icon Badge
+                                  AppTrackerIcon(
+                                    packageName: item.packageName,
+                                    appName: item.appName,
+                                    size: 38,
                                   ),
                                   const SizedBox(width: 12),
 

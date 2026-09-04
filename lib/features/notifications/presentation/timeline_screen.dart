@@ -6,8 +6,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../core/database/database_helper.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../settings/presentation/app_filter_screen.dart';
-import '../../settings/presentation/export_dialog.dart';
 import '../../settings/presentation/settings_screen.dart';
 import '../data/notification_listener_service.dart';
 import '../models/notification_model.dart';
@@ -200,29 +198,6 @@ class _TimelineScreenState extends State<TimelineScreen> with WidgetsBindingObse
           ],
         ),
         actions: [
-          // App Filters Screen Trigger
-          IconButton(
-            icon: const Icon(Icons.tune_rounded, size: 22),
-            tooltip: 'App Filters',
-            onPressed: () async {
-              await Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const AppFilterScreen()),
-              );
-              _loadNotifications();
-            },
-          ),
-          // Export JSON Trigger
-          IconButton(
-            icon: const Icon(Icons.share_rounded, size: 22),
-            tooltip: 'Export JSON',
-            onPressed: () {
-              showDialog(
-                context: context,
-                builder: (_) => const ExportDialog(),
-              );
-            },
-          ),
           // Centralized Settings Screen Trigger
           IconButton(
             icon: const Icon(Icons.settings_outlined, size: 22),
@@ -236,7 +211,7 @@ class _TimelineScreenState extends State<TimelineScreen> with WidgetsBindingObse
               _loadNotifications();
             },
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: 6),
         ],
       ),
       body: Column(

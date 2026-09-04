@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../models/notification_model.dart';
+import 'app_tracker_icon.dart';
 
 /// Minimalist timeline notification card featuring soft rounded corners,
 /// subtle vertical rail connector, bold app title, right-aligned muted timestamp,
@@ -119,15 +120,12 @@ class TimelineCard extends StatelessWidget {
                               Expanded(
                                 child: Row(
                                   children: [
-                                    Container(
-                                      width: 6,
-                                      height: 6,
-                                      decoration: BoxDecoration(
-                                        color: primaryAccent,
-                                        shape: BoxShape.circle,
-                                      ),
+                                    AppTrackerIcon(
+                                      packageName: notification.packageName,
+                                      appName: notification.appName,
+                                      size: 24,
                                     ),
-                                    const SizedBox(width: 6),
+                                    const SizedBox(width: 8),
                                     Flexible(
                                       child: Text(
                                         notification.appName,
@@ -230,10 +228,15 @@ class TimelineCard extends StatelessWidget {
             ),
             const SizedBox(height: 16),
 
-            // Header info
+            // Header info with AppTrackerIcon
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
+                AppTrackerIcon(
+                  packageName: notification.packageName,
+                  appName: notification.appName,
+                  size: 40,
+                ),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -254,9 +257,10 @@ class TimelineCard extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  '${notification.formattedDate} • ${notification.formattedTime}',
+                  '${notification.formattedDate}\n${notification.formattedTime}',
+                  textAlign: TextAlign.end,
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 11,
                     fontWeight: FontWeight.w500,
                     color: isDark ? AppTheme.darkTextMuted : AppTheme.lightTextMuted,
                   ),

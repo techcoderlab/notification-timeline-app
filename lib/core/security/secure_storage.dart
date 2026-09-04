@@ -2,11 +2,13 @@
 // Module   : lib/core/security/secure_storage.dart
 // ─────────────────────────────────────────────────────
 
+import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../database/database_helper.dart';
 
 /// Hardware-backed secure storage manager handling encryption keys, passcode persistence,
-/// theme mode preference, and notification tracking state.
+/// theme mode preference, and notification tracking state with multi-tier caching (Memory + SQLite + Keystore).
 class SecureStorageService {
   static const String _keyPasscode = 'sec_key_passcode_pin';
   static const String _keyBiometricsEnabled = 'sec_key_biometrics_enabled';
@@ -18,6 +20,9 @@ class SecureStorageService {
   static final SecureStorageService instance = SecureStorageService._internal();
   SecureStorageService._internal();
 
+  // Tier 1 In-Memory Cache for sub-millisecond, synchronous-speed reads
+  final Map<String, String> _memoryCache = {};
+
   final FlutterSecureStorage _storage = const FlutterSecureStorage(
     aOptions: AndroidOptions(
       encryptedSharedPreferences: true,
@@ -28,28 +33,86 @@ class SecureStorageService {
     ),
   );
 
+  /// Helper to safely read a key across Memory, SQLite, and SecureStorage
+  /// # O(1) time, O(1) space
+  Future<String?> _safeRead(String key) async {
+    // 1. Check Tier 1 Memory Cache
+    if (_memoryCache.containsKey(key)) {
+      return _memoryCache[key];
+    }
+
+    // 2. Check Tier 2 SQLite Persistent Storage
+    try {
+      final dbVal = await DatabaseHelper.instance.getSetting(key);
+      if (dbVal != null) {
+        _memoryCache[key] = dbVal;
+        return dbVal;
+      }
+    } catch (_) {}
+
+    // 3. Check Tier 3 Hardware Keystore / Secure Storage
+    try {
+      final secVal = await _storage.read(key: key);
+      if (secVal != null) {
+        _memoryCache[key] = secVal;
+        // Sync to SQLite for offline resilience
+        await DatabaseHelper.instance.upsertSetting(key, secVal);
+        return secVal;
+      }
+    } catch (e) {
+      developer.log('SecureStorage read exception for $key: $e', name: 'SecureStorageService');
+    }
+
+    return null;
+  }
+
+  /// Helper to safely write across Memory, SQLite, and SecureStorage
+  /// # O(1) time, O(1) space
+  Future<void> _safeWrite(String key, String value) async {
+    _memoryCache[key] = value;
+
+    // Persist to Tier 2 SQLite first (always reliable on all Android versions)
+    try {
+      await DatabaseHelper.instance.upsertSetting(key, value);
+    } catch (e) {
+      developer.log('SQLite setting write exception: $e', name: 'SecureStorageService');
+    }
+
+    // Persist to Tier 3 Hardware Keystore
+    try {
+      await _storage.write(key: key, value: value);
+    } catch (e) {
+      developer.log('SecureStorage write exception for $key: $e', name: 'SecureStorageService');
+    }
+  }
+
   /// Initialize default passcode ("123456") and settings on first launch if not set
   /// # O(1) time, O(1) space
   Future<void> initializeDefaults() async {
-    final existingPin = await _storage.read(key: _keyPasscode);
+    final existingPin = await _safeRead(_keyPasscode);
     if (existingPin == null || existingPin.isEmpty) {
-      await _storage.write(key: _keyPasscode, value: _defaultPasscode);
+      await _safeWrite(_keyPasscode, _defaultPasscode);
     }
 
-    final biometricsPref = await _storage.read(key: _keyBiometricsEnabled);
+    final biometricsPref = await _safeRead(_keyBiometricsEnabled);
     if (biometricsPref == null) {
-      await _storage.write(key: _keyBiometricsEnabled, value: 'true');
+      await _safeWrite(_keyBiometricsEnabled, 'true');
     }
 
-    final trackingPref = await _storage.read(key: _keyTrackingEnabled);
+    final trackingPref = await _safeRead(_keyTrackingEnabled);
     if (trackingPref == null) {
-      await _storage.write(key: _keyTrackingEnabled, value: 'true');
+      await _safeWrite(_keyTrackingEnabled, 'true');
+    }
+
+    final themePref = await _safeRead(_keyThemeMode);
+    if (themePref == null) {
+      await _safeWrite(_keyThemeMode, 'dark');
     }
   }
 
   /// Retrieve stored 6-digit passcode
   Future<String> getPasscode() async {
-    final pin = await _storage.read(key: _keyPasscode);
+    final pin = await _safeRead(_keyPasscode);
     return pin ?? _defaultPasscode;
   }
 
@@ -58,7 +121,7 @@ class SecureStorageService {
     if (newPasscode.length != 6 || int.tryParse(newPasscode) == null) {
       return false;
     }
-    await _storage.write(key: _keyPasscode, value: newPasscode);
+    await _safeWrite(_keyPasscode, newPasscode);
     return true;
   }
 
@@ -71,35 +134,29 @@ class SecureStorageService {
 
   /// Check if biometric authentication is enabled in user settings
   Future<bool> isBiometricsEnabled() async {
-    final pref = await _storage.read(key: _keyBiometricsEnabled);
+    final pref = await _safeRead(_keyBiometricsEnabled);
     return pref != 'false';
   }
 
   /// Update biometrics toggle
   Future<void> setBiometricsEnabled(bool enabled) async {
-    await _storage.write(
-      key: _keyBiometricsEnabled,
-      value: enabled ? 'true' : 'false',
-    );
+    await _safeWrite(_keyBiometricsEnabled, enabled ? 'true' : 'false');
   }
 
   /// Check if notification tracking is enabled (master switch)
   Future<bool> isTrackingEnabled() async {
-    final pref = await _storage.read(key: _keyTrackingEnabled);
+    final pref = await _safeRead(_keyTrackingEnabled);
     return pref != 'false';
   }
 
   /// Update notification tracking master switch
   Future<void> setTrackingEnabled(bool enabled) async {
-    await _storage.write(
-      key: _keyTrackingEnabled,
-      value: enabled ? 'true' : 'false',
-    );
+    await _safeWrite(_keyTrackingEnabled, enabled ? 'true' : 'false');
   }
 
   /// Retrieve user theme mode preference ('dark', 'light', 'system')
   Future<ThemeMode> getThemeMode() async {
-    final modeStr = await _storage.read(key: _keyThemeMode);
+    final modeStr = await _safeRead(_keyThemeMode);
     switch (modeStr) {
       case 'light':
         return ThemeMode.light;
@@ -125,14 +182,15 @@ class SecureStorageService {
         modeStr = 'dark';
         break;
     }
-    await _storage.write(key: _keyThemeMode, value: modeStr);
+    await _safeWrite(_keyThemeMode, modeStr);
   }
 
   /// Reset passcode back to default "123456"
   Future<void> resetToDefault() async {
-    await _storage.write(key: _keyPasscode, value: _defaultPasscode);
-    await _storage.write(key: _keyBiometricsEnabled, value: 'true');
-    await _storage.write(key: _keyTrackingEnabled, value: 'true');
-    await _storage.write(key: _keyThemeMode, value: 'dark');
+    await _safeWrite(_keyPasscode, _defaultPasscode);
+    await _safeWrite(_keyBiometricsEnabled, 'true');
+    await _safeWrite(_keyTrackingEnabled, 'true');
+    await _safeWrite(_keyThemeMode, 'dark');
   }
 }
+

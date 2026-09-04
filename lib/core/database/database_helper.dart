@@ -16,6 +16,7 @@ class DatabaseHelper {
   // Table Names
   static const String tableNotifications = 'notifications';
   static const String tableAppFilters = 'app_filters';
+  static const String tableAppSettings = 'app_settings';
 
   // Notifications Column Names
   static const String colId = 'id';
@@ -29,6 +30,10 @@ class DatabaseHelper {
   static const String colFilterPackageName = 'package_name';
   static const String colFilterAppName = 'app_name';
   static const String colFilterIsEnabled = 'is_enabled';
+
+  // App Settings Column Names
+  static const String colSettingKey = 'setting_key';
+  static const String colSettingValue = 'setting_value';
 
   // Singleton instance
   static final DatabaseHelper instance = DatabaseHelper._internal();
@@ -63,6 +68,14 @@ class DatabaseHelper {
           await db.execute('PRAGMA synchronous = NORMAL');
         },
       );
+
+      // Ensure app_settings table exists even on pre-existing database versions
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS $tableAppSettings (
+          $colSettingKey TEXT PRIMARY KEY,
+          $colSettingValue TEXT NOT NULL
+        )
+      ''');
 
       _database = db;
       _dbOpenCompleter!.complete(db);
@@ -106,6 +119,14 @@ class DatabaseHelper {
     await db.execute('''
       CREATE INDEX idx_notifications_pkg 
       ON $tableNotifications ($colPackageName)
+    ''');
+
+    // 4. App Settings Table
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $tableAppSettings (
+        $colSettingKey TEXT PRIMARY KEY,
+        $colSettingValue TEXT NOT NULL
+      )
     ''');
   }
 
@@ -313,6 +334,45 @@ class DatabaseHelper {
       tableAppFilters,
       {colFilterIsEnabled: enableAll ? 1 : 0},
     );
+  }
+
+  // ─────────────────────────────────────────────────────
+  // APP SETTINGS OPERATIONS
+  // ─────────────────────────────────────────────────────
+
+  /// Retrieve persistent setting by key
+  /// # O(1) time, O(1) space
+  Future<String?> getSetting(String key) async {
+    try {
+      final db = await database;
+      final result = await db.query(
+        tableAppSettings,
+        columns: [colSettingValue],
+        where: '$colSettingKey = ?',
+        whereArgs: [key],
+        limit: 1,
+      );
+      if (result.isNotEmpty) {
+        return result.first[colSettingValue] as String?;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Upsert persistent setting by key
+  /// # O(1) time, O(1) space
+  Future<void> upsertSetting(String key, String value) async {
+    try {
+      final db = await database;
+      await db.insert(
+        tableAppSettings,
+        {
+          colSettingKey: key,
+          colSettingValue: value,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    } catch (_) {}
   }
 
   /// Close database connection safely

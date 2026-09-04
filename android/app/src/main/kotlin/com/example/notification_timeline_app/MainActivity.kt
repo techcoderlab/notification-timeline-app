@@ -22,35 +22,50 @@ class MainActivity: FlutterFragmentActivity() {
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             if (call.method == "getInstalledApps") {
-                try {
-                    val pm = packageManager
-                    val packages = pm.getInstalledPackages(0)
-                    val appList = ArrayList<Map<String, Any>>()
+                Thread {
+                    try {
+                        val pm = packageManager
+                        val packages = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                            pm.getInstalledPackages(PackageManager.PackageInfoFlags.of(0))
+                        } else {
+                            @Suppress("DEPRECATION")
+                            pm.getInstalledPackages(0)
+                        }
+                        val appList = ArrayList<Map<String, Any>>()
 
-                    for (pkg in packages) {
-                        val appInfo = pkg.applicationInfo ?: continue
-                        val isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
-                        val isUpdatedSystem = (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+                        for (pkg in packages) {
+                            val appInfo = pkg.applicationInfo ?: continue
+                            val isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+                            val isUpdatedSystem = (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
 
-                        val appName = pm.getApplicationLabel(appInfo).toString()
-                        val packageName = pkg.packageName
+                            val appName = try {
+                                pm.getApplicationLabel(appInfo).toString()
+                            } catch (e: Exception) {
+                                pkg.packageName
+                            }
+                            val packageName = pkg.packageName
 
-                        // Skip our own application from being listed in filter
-                        if (packageName == applicationContext.packageName) continue
+                            // Skip our own application from being listed in filter
+                            if (packageName == applicationContext.packageName) continue
 
-                        val map = HashMap<String, Any>()
-                        map["packageName"] = packageName
-                        map["appName"] = if (appName.isNotEmpty()) appName else packageName
-                        map["isSystemApp"] = isSystem && !isUpdatedSystem
-                        appList.add(map)
+                            val map = HashMap<String, Any>()
+                            map["packageName"] = packageName
+                            map["appName"] = if (appName.isNotEmpty()) appName else packageName
+                            map["isSystemApp"] = isSystem && !isUpdatedSystem
+                            appList.add(map)
+                        }
+
+                        // Sort alphabetically by human-readable app name
+                        appList.sortBy { (it["appName"] as String).lowercase() }
+                        runOnUiThread {
+                            result.success(appList)
+                        }
+                    } catch (e: Exception) {
+                        runOnUiThread {
+                            result.error("ERROR_GETTING_APPS", e.message, null)
+                        }
                     }
-
-                    // Sort alphabetically by human-readable app name
-                    appList.sortBy { (it["appName"] as String).lowercase() }
-                    result.success(appList)
-                } catch (e: Exception) {
-                    result.error("ERROR_GETTING_APPS", e.message, null)
-                }
+                }.start()
             } else {
                 result.notImplemented()
             }
