@@ -350,6 +350,28 @@ class DatabaseHelper {
     );
   }
 
+  /// Batch-insert discovered apps into the app_filters table.
+  /// Uses INSERT OR IGNORE so existing rows (with user-toggled states) are never overwritten.
+  /// # O(n) time, O(n) space where n is the number of apps
+  Future<void> batchUpsertAppFilters(List<Map<String, dynamic>> apps) async {
+    if (apps.isEmpty) return;
+    final db = await database;
+    final batch = db.batch();
+    for (final app in apps) {
+      batch.rawInsert(
+        'INSERT OR IGNORE INTO $tableAppFilters '
+        '($colFilterPackageName, $colFilterAppName, $colFilterIsEnabled) '
+        'VALUES (?, ?, ?)',
+        [
+          app['packageName'] as String,
+          app['appName'] as String,
+          (app['isEnabled'] as bool) ? 1 : 0,
+        ],
+      );
+    }
+    await batch.commit(noResult: true);
+  }
+
   // ─────────────────────────────────────────────────────
   // APP SETTINGS OPERATIONS
   // ─────────────────────────────────────────────────────

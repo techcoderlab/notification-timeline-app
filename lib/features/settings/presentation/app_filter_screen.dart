@@ -132,6 +132,20 @@ class _AppFilterScreenState extends State<AppFilterScreen> {
           _allApps = items;
         });
       }
+
+      // Persist ALL discovered apps to SQLite so filter states survive screen re-visits.
+      // Uses INSERT OR IGNORE — existing rows with user-toggled states are never overwritten.
+      if (items.isNotEmpty) {
+        try {
+          await DatabaseHelper.instance.batchUpsertAppFilters(
+            items.map((a) => <String, dynamic>{
+              'packageName': a.packageName,
+              'appName': a.appName,
+              'isEnabled': a.isEnabled,
+            }).toList(),
+          );
+        } catch (_) {}
+      }
     } catch (e) {
       // Graceful fallback to SQLite records or default apps
       final List<AppFilterItem> fallbackItems = [];
