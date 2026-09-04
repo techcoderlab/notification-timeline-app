@@ -179,7 +179,6 @@ class SecureStorageService {
         modeStr = 'dark';
         break;
       case ThemeMode.system:
-      default:
         modeStr = 'system';
         break;
     }
