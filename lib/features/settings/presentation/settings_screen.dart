@@ -29,21 +29,33 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
   bool _biometricsEnabled = true;
   bool _canCheckBiometrics = false;
   int _totalRecordCount = 0;
-  ThemeMode _currentTheme = ThemeMode.dark;
+  ThemeMode _currentTheme = ThemeMode.system;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    NotificationListenerManager.instance.addListener(_onListenerManagerChanged);
     // Instant pre-population from current memory state to prevent switch flicker
     _isTracking = NotificationListenerManager.instance.isListening;
+    _hasPermission = NotificationListenerManager.instance.hasPermissionStatus;
     _currentTheme = ThemeService.instance.themeMode;
     _loadAllSettings();
+  }
+
+  void _onListenerManagerChanged() {
+    if (mounted) {
+      setState(() {
+        _isTracking = NotificationListenerManager.instance.isListening;
+        _hasPermission = NotificationListenerManager.instance.hasPermissionStatus;
+      });
+    }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    NotificationListenerManager.instance.removeListener(_onListenerManagerChanged);
     super.dispose();
   }
 
@@ -52,27 +64,33 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
     if (state == AppLifecycleState.resumed) {
       // Re-verify system permissions and refreshed states when returning from Android Settings
       _loadAllSettings();
+      // Retry after slight delay to allow Android OS permissions sync across processes
+      Future.delayed(const Duration(milliseconds: 350), () {
+        if (mounted) _loadAllSettings();
+      });
     }
   }
 
   Future<void> _loadAllSettings() async {
+    // 1. Check permission immediately and update UI without waiting on DB/biometrics
+    try {
+      final perm = await NotificationListenerManager.instance.hasPermission();
+      if (mounted) {
+        setState(() => _hasPermission = perm);
+      }
+    } catch (_) {}
+
+    // 2. Load other preferences and counts safely
     try {
       final tracking = await SecureStorageService.instance.isTrackingEnabled();
-      final perm = await NotificationListenerManager.instance.hasPermission();
       final bioPref = await SecureStorageService.instance.isBiometricsEnabled();
       final bioAvail = await BiometricService.instance.isBiometricsAvailable();
       final count = await DatabaseHelper.instance.getNotificationsCount();
       final theme = ThemeService.instance.themeMode;
 
-      if (perm && tracking) {
-        // Automatically start and rebind service when permission is active
-        await NotificationListenerManager.instance.startListening();
-      }
-
       if (mounted) {
         setState(() {
           _isTracking = tracking;
-          _hasPermission = perm;
           _biometricsEnabled = bioPref;
           _canCheckBiometrics = bioAvail;
           _totalRecordCount = count;
@@ -178,10 +196,16 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                     : TextButton(
                         onPressed: () async {
                           await NotificationListenerManager.instance.requestPermission();
-                          _loadAllSettings();
                         },
                         child: const Text('Enable', style: TextStyle(fontWeight: FontWeight.w800)),
                       ),
+                onTap: () async {
+                  if (!_hasPermission) {
+                    await NotificationListenerManager.instance.requestPermission();
+                  } else {
+                    await _loadAllSettings();
+                  }
+                },
               ),
             ],
           ),

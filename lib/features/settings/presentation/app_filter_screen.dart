@@ -97,14 +97,6 @@ class _AppFilterScreenState extends State<AppFilterScreen> {
                 isEnabled: isEnabled,
                 isSystemApp: isSystem,
               ));
-
-              // Cache in background for fast future offline/fallback display
-              DatabaseHelper.instance.upsertAppFilter(
-                pkg,
-                name,
-                isEnabled,
-                onlyIfMissing: true,
-              );
             }
           }
         }
@@ -198,13 +190,22 @@ class _AppFilterScreenState extends State<AppFilterScreen> {
       _allApps = _allApps.map((a) => a.copyWith(isEnabled: enableAll)).toList();
     });
 
-    for (final item in _allApps) {
-      await DatabaseHelper.instance.upsertAppFilter(
-        item.packageName,
-        item.appName,
-        enableAll,
-      );
-    }
+    try {
+      final db = await DatabaseHelper.instance.database;
+      final batch = db.batch();
+      for (final item in _allApps) {
+        batch.insert(
+          DatabaseHelper.tableAppFilters,
+          {
+            DatabaseHelper.colFilterPackageName: item.packageName,
+            DatabaseHelper.colFilterAppName: item.appName,
+            DatabaseHelper.colFilterIsEnabled: enableAll ? 1 : 0,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+      await batch.commit(noResult: true);
+    } catch (_) {}
   }
 
   @override

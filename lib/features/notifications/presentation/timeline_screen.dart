@@ -55,6 +55,9 @@ class _TimelineScreenState extends State<TimelineScreen> with WidgetsBindingObse
     if (state == AppLifecycleState.resumed) {
       _checkPermissionsAndStatus();
       _loadNotifications();
+      Future.delayed(const Duration(milliseconds: 350), () {
+        if (mounted) _checkPermissionsAndStatus();
+      });
     }
   }
 
@@ -72,9 +75,6 @@ class _TimelineScreenState extends State<TimelineScreen> with WidgetsBindingObse
   Future<void> _checkPermissionsAndStatus() async {
     final hasPerm = await NotificationListenerManager.instance.hasPermission();
     final isListening = NotificationListenerManager.instance.isListening;
-    if (hasPerm && isListening) {
-      await NotificationListenerManager.instance.startListening();
-    }
     if (mounted) {
       setState(() {
         _hasPermission = hasPerm;

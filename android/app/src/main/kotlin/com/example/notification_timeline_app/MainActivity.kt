@@ -29,6 +29,7 @@ class MainActivity: FlutterFragmentActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        ensureNotificationServiceEnabled()
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
@@ -155,8 +156,8 @@ class MainActivity: FlutterFragmentActivity() {
 
                 "rebindNotificationListener" -> {
                     try {
-                        rebindNotificationService()
-                        result.success(true)
+                        val ok = ensureNotificationServiceEnabled()
+                        result.success(ok)
                     } catch (e: Exception) {
                         result.success(false)
                     }
@@ -196,6 +197,7 @@ class MainActivity: FlutterFragmentActivity() {
      */
     private fun checkNotificationAccessGranted(): Boolean {
         val myPkg = packageName
+        ensureNotificationServiceEnabled()
 
         // 1. Primary Check: NotificationManagerCompat (Reliable across all Android versions 10+)
         try {
@@ -228,41 +230,28 @@ class MainActivity: FlutterFragmentActivity() {
     }
 
     /**
-     * Toggles component enabled setting to force Android NotificationManagerService
-     * to immediately rebind and connect to our listener without requiring a reboot.
+     * Ensures the Notification Listener component is enabled in the PackageManager
+     * so it is always discoverable in Android System Settings and bound by Android OS.
+     * Never disables the component, preventing permission revocation or ANR.
      */
-    private fun rebindNotificationService() {
-        try {
-            val component = ComponentName(this, NOTIFICATION_SERVICE_CLASS)
-            packageManager.setComponentEnabledSetting(
-                component,
-                PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                PackageManager.DONT_KILL_APP
-            )
-            packageManager.setComponentEnabledSetting(
-                component,
-                PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-                PackageManager.DONT_KILL_APP
-            )
-        } catch (_: Exception) {}
-    }
-
-    /**
-     * Directly starts the Notification Listener service and rebinds component.
-     */
-    private fun startNotificationServiceDirectly(): Boolean {
+    private fun ensureNotificationServiceEnabled(): Boolean {
         return try {
-            val serviceClass = Class.forName(NOTIFICATION_SERVICE_CLASS)
-            val intent = Intent(this, serviceClass)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(intent)
-            } else {
-                startService(intent)
+            val component = ComponentName(this, NOTIFICATION_SERVICE_CLASS)
+            val currentState = packageManager.getComponentEnabledSetting(component)
+            if (currentState != PackageManager.COMPONENT_ENABLED_STATE_ENABLED) {
+                packageManager.setComponentEnabledSetting(
+                    component,
+                    PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                    PackageManager.DONT_KILL_APP
+                )
             }
-            rebindNotificationService()
             true
         } catch (_: Exception) {
             false
         }
+    }
+
+    private fun startNotificationServiceDirectly(): Boolean {
+        return ensureNotificationServiceEnabled()
     }
 }

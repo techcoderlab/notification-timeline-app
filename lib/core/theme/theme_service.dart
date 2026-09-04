@@ -10,7 +10,7 @@ class ThemeService with ChangeNotifier {
   static final ThemeService instance = ThemeService._internal();
   ThemeService._internal();
 
-  ThemeMode _themeMode = ThemeMode.dark;
+  ThemeMode _themeMode = ThemeMode.system;
   ThemeMode get themeMode => _themeMode;
 
   /// Load persisted theme preference on app bootstrap

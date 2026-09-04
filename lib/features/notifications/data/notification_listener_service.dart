@@ -97,26 +97,37 @@ class NotificationListenerManager with ChangeNotifier {
     }
   }
 
+  bool _hasPermission = false;
+  bool get hasPermissionStatus => _hasPermission;
+
   /// Check if user has granted Notification Access permission in Android Settings
   /// Checks native AndroidX NotificationManagerCompat first, fallback to plugin.
   /// # O(1) time, O(1) space
   Future<bool> hasPermission() async {
+    bool granted = false;
     // 1. Primary: Query native AndroidX NotificationManagerCompat
     try {
       final bool? nativeGranted = await _nativeHostChannel
           .invokeMethod<bool>('checkNotificationPermission');
       if (nativeGranted == true) {
-        return true;
+        granted = true;
       }
     } catch (_) {}
 
     // 2. Secondary fallback: Query plugin property
-    try {
-      final bool? granted = await NotificationsListener.hasPermission;
-      return granted ?? false;
-    } catch (e) {
-      return false;
+    if (!granted) {
+      try {
+        final bool? pluginGranted = await NotificationsListener.hasPermission;
+        granted = pluginGranted ?? false;
+      } catch (_) {}
     }
+
+    if (_hasPermission != granted) {
+      _hasPermission = granted;
+      notifyListeners();
+    }
+
+    return granted;
   }
 
   /// Open Android Notification Access Settings directly
@@ -142,14 +153,17 @@ class NotificationListenerManager with ChangeNotifier {
       await SecureStorageService.instance.setTrackingEnabled(enable);
       notifyListeners();
 
-      final hasPerm = await hasPermission();
       if (enable) {
+        final hasPerm = await hasPermission();
         if (hasPerm) {
           await _startUnderlyingService();
         }
-      } else {
-        await NotificationsListener.stopService();
       }
+      // TRADE-OFF: Do NOT call NotificationsListener.stopService().
+      // Plugin's stopService disables the Android Service Component in PackageManager,
+      // which strips Android OS notification access permission, unbinds the service,
+      // and causes subsequent startForegroundService ANR crashes.
+      // Notifications are cleanly dropped in software by persistIncomingEvent when tracking is false.
       return true;
     } catch (e) {
       developer.log('Error toggling tracking: $e',

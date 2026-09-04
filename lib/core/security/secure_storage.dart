@@ -106,7 +106,7 @@ class SecureStorageService {
 
     final themePref = await _safeRead(_keyThemeMode);
     if (themePref == null) {
-      await _safeWrite(_keyThemeMode, 'dark');
+      await _safeWrite(_keyThemeMode, 'system');
     }
   }
 
@@ -158,13 +158,13 @@ class SecureStorageService {
   Future<ThemeMode> getThemeMode() async {
     final modeStr = await _safeRead(_keyThemeMode);
     switch (modeStr) {
+      case 'dark':
+        return ThemeMode.dark;
       case 'light':
         return ThemeMode.light;
       case 'system':
-        return ThemeMode.system;
-      case 'dark':
       default:
-        return ThemeMode.dark;
+        return ThemeMode.system;
     }
   }
 
@@ -175,11 +175,12 @@ class SecureStorageService {
       case ThemeMode.light:
         modeStr = 'light';
         break;
-      case ThemeMode.system:
-        modeStr = 'system';
-        break;
       case ThemeMode.dark:
         modeStr = 'dark';
+        break;
+      case ThemeMode.system:
+      default:
+        modeStr = 'system';
         break;
     }
     await _safeWrite(_keyThemeMode, modeStr);
@@ -190,7 +191,7 @@ class SecureStorageService {
     await _safeWrite(_keyPasscode, _defaultPasscode);
     await _safeWrite(_keyBiometricsEnabled, 'true');
     await _safeWrite(_keyTrackingEnabled, 'true');
-    await _safeWrite(_keyThemeMode, 'dark');
+    await _safeWrite(_keyThemeMode, 'system');
   }
 }
 

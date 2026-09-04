@@ -11,7 +11,7 @@ import '../../features/notifications/models/notification_model.dart';
 /// Ensures indexed, non-blocking queries and atomic operations.
 class DatabaseHelper {
   static const String _dbName = 'notification_tracker.db';
-  static const int _dbVersion = 1;
+  static const int _dbVersion = 2;
 
   // Table Names
   static const String tableNotifications = 'notifications';
@@ -68,7 +68,12 @@ class DatabaseHelper {
       final db = await openDatabase(
         path,
         version: _dbVersion,
-        onCreate: _onCreate,
+        onCreate: (db, version) async {
+          await _createTablesIfNotExist(db);
+        },
+        onUpgrade: (db, oldVersion, newVersion) async {
+          await _createTablesIfNotExist(db);
+        },
         onConfigure: (db) async {
           // Enable SQLite Write-Ahead Logging (WAL) for concurrent read/write throughput
           await db.execute('PRAGMA journal_mode = WAL');
@@ -76,13 +81,8 @@ class DatabaseHelper {
         },
       );
 
-      // Ensure app_settings table exists even on pre-existing database versions
-      await db.execute('''
-        CREATE TABLE IF NOT EXISTS $tableAppSettings (
-          $colSettingKey TEXT PRIMARY KEY,
-          $colSettingValue TEXT NOT NULL
-        )
-      ''');
+      // Ensure all tables and indexes exist even on pre-existing database versions
+      await _createTablesIfNotExist(db);
 
       _database = db;
       if (!completer.isCompleted) {
@@ -101,11 +101,11 @@ class DatabaseHelper {
     }
   }
 
-  /// Initial table and index creation
-  Future<void> _onCreate(Database db, int version) async {
+  /// Initial table and index creation with idempotent guards
+  Future<void> _createTablesIfNotExist(Database db) async {
     // 1. App Filters Table
     await db.execute('''
-      CREATE TABLE $tableAppFilters (
+      CREATE TABLE IF NOT EXISTS $tableAppFilters (
         $colFilterPackageName TEXT PRIMARY KEY,
         $colFilterAppName TEXT NOT NULL,
         $colFilterIsEnabled INTEGER NOT NULL DEFAULT 1
@@ -114,7 +114,7 @@ class DatabaseHelper {
 
     // 2. Notifications Table
     await db.execute('''
-      CREATE TABLE $tableNotifications (
+      CREATE TABLE IF NOT EXISTS $tableNotifications (
         $colId INTEGER PRIMARY KEY AUTOINCREMENT,
         $colPackageName TEXT NOT NULL,
         $colAppName TEXT NOT NULL,
@@ -126,12 +126,12 @@ class DatabaseHelper {
 
     // 3. Composite Indexes for fast time-series queries and package lookups
     await db.execute('''
-      CREATE INDEX idx_notifications_timestamp 
+      CREATE INDEX IF NOT EXISTS idx_notifications_timestamp 
       ON $tableNotifications ($colTimestamp DESC)
     ''');
 
     await db.execute('''
-      CREATE INDEX idx_notifications_pkg 
+      CREATE INDEX IF NOT EXISTS idx_notifications_pkg 
       ON $tableNotifications ($colPackageName)
     ''');
 
