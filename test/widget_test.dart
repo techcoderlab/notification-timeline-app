@@ -95,7 +95,7 @@ void main() {
     // Verify that the LockScreen security gate is presented
     expect(find.byType(LockScreen), findsOneWidget);
     expect(find.text('Security Check'), findsOneWidget);
-    expect(find.text('Enter 6-digit PIN to access timeline'), findsOneWidget);
+    expect(find.text('Enter your 6-digit passcode'), findsOneWidget);
   });
 
   testWidgets('LockScreen rejects invalid PIN and resets with error', (WidgetTester tester) async {
