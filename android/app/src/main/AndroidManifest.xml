@@ -19,6 +19,17 @@
     <!-- Query installed apps for app filter management -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
 
+    <!-- Queries declaration to guarantee launcher and installed app visibility on Android 11+ (API 30+) -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+        </intent>
+    </queries>
+
     <application
         android:label="Smart Notification Timeline"
         android:name="${applicationName}"

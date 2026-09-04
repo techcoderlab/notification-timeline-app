@@ -72,6 +72,9 @@ class _TimelineScreenState extends State<TimelineScreen> with WidgetsBindingObse
   Future<void> _checkPermissionsAndStatus() async {
     final hasPerm = await NotificationListenerManager.instance.hasPermission();
     final isListening = NotificationListenerManager.instance.isListening;
+    if (hasPerm && isListening) {
+      await NotificationListenerManager.instance.startListening();
+    }
     if (mounted) {
       setState(() {
         _hasPermission = hasPerm;

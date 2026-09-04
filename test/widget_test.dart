@@ -77,8 +77,7 @@ void main() {
       }
     });
 
-    // 4. Mock flutter_notification_listener platform channel
-    // Required when TimelineScreen navigates in and calls NotificationListenerManager.initialize()
+    // 4. Mock flutter_notification_listener platform channels
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(const MethodChannel('flutter_notification_listener'), (MethodCall methodCall) async {
       switch (methodCall.method) {
@@ -98,6 +97,47 @@ void main() {
           return null;
       }
     });
+
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(const MethodChannel('flutter_notification_listener/method'), (MethodCall methodCall) async {
+      switch (methodCall.method) {
+        case 'plugin.initialize':
+          return true;
+        case 'plugin.hasPermission':
+          return false;
+        case 'plugin.openPermissionSettings':
+          return null;
+        case 'plugin.isServiceRunning':
+          return false;
+        case 'plugin.startService':
+          return true;
+        case 'plugin.stopService':
+          return true;
+        default:
+          return null;
+      }
+    });
+
+    // 5. Mock Android native host channel
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(const MethodChannel('com.example.notification_timeline_app/installed_apps'), (MethodCall methodCall) async {
+      switch (methodCall.method) {
+        case 'getInstalledApps':
+          return <Map<String, dynamic>>[];
+        case 'checkNotificationPermission':
+          return false;
+        case 'openNotificationListenerSettings':
+          return true;
+        case 'rebindNotificationListener':
+          return true;
+        case 'startNotificationListenerService':
+          return true;
+        case 'requestPostNotificationPermission':
+          return true;
+        default:
+          return null;
+      }
+    });
   });
 
   tearDown(() {
@@ -109,6 +149,10 @@ void main() {
         .setMockMethodCallHandler(const MethodChannel('plugins.flutter.io/local_auth'), null);
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(const MethodChannel('flutter_notification_listener'), null);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(const MethodChannel('flutter_notification_listener/method'), null);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(const MethodChannel('com.example.notification_timeline_app/installed_apps'), null);
   });
 
   testWidgets('SmartNotificationTrackerApp boots with LockScreen', (WidgetTester tester) async {
@@ -148,7 +192,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
     }
 
-    // Use pump() with generous duration instead of pumpAndSettle() because
+    // Use pump() with fixed duration instead of pumpAndSettle() because
     // TimelineScreen has a live broadcast StreamSubscription listener that
     // never completes, causing pumpAndSettle() to time out indefinitely.
     await tester.pump(const Duration(seconds: 2));

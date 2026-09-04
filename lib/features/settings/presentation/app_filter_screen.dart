@@ -64,14 +64,17 @@ class _AppFilterScreenState extends State<AppFilterScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // 1. Fetch installed packages from Android host via platform channel with 5s timeout
+      // 1. Fetch installed packages from Android host via platform channel with 15s timeout
       final List<dynamic>? installedList = await _platformChannel
           .invokeMethod<List<dynamic>>('getInstalledApps')
-          .timeout(const Duration(seconds: 5));
+          .timeout(const Duration(seconds: 15));
 
       // 2. Fetch configured filter states from SQLite
-      final List<AppFilterModel> dbFilters =
-          await DatabaseHelper.instance.getAllAppFilters();
+      List<AppFilterModel> dbFilters = [];
+      try {
+        dbFilters = await DatabaseHelper.instance.getAllAppFilters();
+      } catch (_) {}
+
       final Map<String, bool> dbFilterMap = {
         for (final f in dbFilters) f.packageName: f.isEnabled,
       };
@@ -94,6 +97,14 @@ class _AppFilterScreenState extends State<AppFilterScreen> {
                 isEnabled: isEnabled,
                 isSystemApp: isSystem,
               ));
+
+              // Cache in background for fast future offline/fallback display
+              DatabaseHelper.instance.upsertAppFilter(
+                pkg,
+                name,
+                isEnabled,
+                onlyIfMissing: true,
+              );
             }
           }
         }
@@ -130,10 +141,10 @@ class _AppFilterScreenState extends State<AppFilterScreen> {
       }
     } catch (e) {
       // Graceful fallback to SQLite records or default apps
+      final List<AppFilterItem> fallbackItems = [];
       try {
         final List<AppFilterModel> dbFilters =
             await DatabaseHelper.instance.getAllAppFilters();
-        final List<AppFilterItem> fallbackItems = [];
         if (dbFilters.isNotEmpty) {
           fallbackItems.addAll(dbFilters.map((f) => AppFilterItem(
                 packageName: f.packageName,
@@ -141,20 +152,23 @@ class _AppFilterScreenState extends State<AppFilterScreen> {
                 isEnabled: f.isEnabled,
                 isSystemApp: false,
               )));
-        } else {
-          fallbackItems.addAll(_popularDefaultApps.map((app) => AppFilterItem(
-                packageName: app['packageName'] as String,
-                appName: app['appName'] as String,
-                isEnabled: true,
-                isSystemApp: app['isSystemApp'] as bool,
-              )));
-        }
-        if (mounted) {
-          setState(() {
-            _allApps = fallbackItems;
-          });
         }
       } catch (_) {}
+
+      if (fallbackItems.isEmpty) {
+        fallbackItems.addAll(_popularDefaultApps.map((app) => AppFilterItem(
+              packageName: app['packageName'] as String,
+              appName: app['appName'] as String,
+              isEnabled: true,
+              isSystemApp: app['isSystemApp'] as bool,
+            )));
+      }
+
+      if (mounted) {
+        setState(() {
+          _allApps = fallbackItems;
+        });
+      }
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -472,6 +486,14 @@ class _AppFilterScreenState extends State<AppFilterScreen> {
                     : AppTheme.lightTextSecondary,
               ),
             ),
+            if (_searchQuery.isEmpty) ...[
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: _loadInstalledAppsAndFilters,
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text('Refresh App List', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              ),
+            ],
           ],
         ),
       ),

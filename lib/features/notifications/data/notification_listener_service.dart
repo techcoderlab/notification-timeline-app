@@ -6,6 +6,7 @@ import 'dart:async';
 import 'dart:developer' as developer;
 import 'dart:isolate';
 import 'dart:ui';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_notification_listener/flutter_notification_listener.dart';
 import '../../../core/database/database_helper.dart';
@@ -17,23 +18,34 @@ import '../models/notification_model.dart';
 void _notificationEventCallback(NotificationEvent evt) async {
   WidgetsFlutterBinding.ensureInitialized();
   await NotificationListenerManager.persistIncomingEvent(evt);
-  
-  final SendPort? send = IsolateNameServer.lookupPortByName("_listener_");
-  send?.send(evt);
+
+  // Send to custom listener port
+  final SendPort? sendCustom = IsolateNameServer.lookupPortByName("_listener_");
+  sendCustom?.send(evt);
+
+  // Send to plugin standard port
+  final SendPort? sendPlugin =
+      IsolateNameServer.lookupPortByName(NotificationsListener.SEND_PORT_NAME);
+  sendPlugin?.send(evt);
 }
 
 /// Service managing the notification listener lifecycle, permissions,
 /// app filter validation, and SQLite persistence.
 class NotificationListenerManager with ChangeNotifier {
-  static final NotificationListenerManager instance = NotificationListenerManager._internal();
+  static final NotificationListenerManager instance =
+      NotificationListenerManager._internal();
   NotificationListenerManager._internal();
+
+  static const MethodChannel _nativeHostChannel =
+      MethodChannel('com.example.notification_timeline_app/installed_apps');
 
   static final ReceivePort _uiReceivePort = ReceivePort();
 
   static final StreamController<NotificationModel> _notificationStreamController =
       StreamController<NotificationModel>.broadcast();
 
-  Stream<NotificationModel> get notificationStream => _notificationStreamController.stream;
+  Stream<NotificationModel> get notificationStream =>
+      _notificationStreamController.stream;
 
   bool _isListening = true;
   bool get isListening => _isListening;
@@ -47,35 +59,58 @@ class NotificationListenerManager with ChangeNotifier {
       await NotificationsListener.initialize(
         callbackHandle: _notificationEventCallback,
       );
-      
+
+      // Register UI receive port
       IsolateNameServer.removePortNameMapping("_listener_");
-      IsolateNameServer.registerPortWithName(_uiReceivePort.sendPort, "_listener_");
-      
+      IsolateNameServer.registerPortWithName(
+          _uiReceivePort.sendPort, "_listener_");
+
       _uiReceivePort.listen((message) {
         if (message is NotificationEvent) {
-           _processEventInUI(message);
+          _processEventInUI(message);
         }
       });
 
+      // Also listen on standard plugin receive port for maximum reliability
+      try {
+        NotificationsListener.receivePort?.listen((message) {
+          if (message is NotificationEvent) {
+            _processEventInUI(message);
+          }
+        });
+      } catch (_) {}
+
       notifyListeners();
+
+      // Request runtime POST_NOTIFICATIONS on Android 13+ (API 33+)
+      try {
+        await _nativeHostChannel.invokeMethod('requestPostNotificationPermission');
+      } catch (_) {}
 
       final hasPerm = await hasPermission();
       if (hasPerm && _isListening) {
-        final isRunning = await NotificationsListener.isRunning;
-        if (!(isRunning ?? false)) {
-          await NotificationsListener.startService(
-            title: "Smart Notification Tracker",
-            description: "Monitoring incoming notifications in the background",
-          );
-        }
+        await _startUnderlyingService();
       }
     } catch (e) {
-      developer.log('Initialization notice for NotificationsListener: $e', name: 'NotificationListenerManager');
+      developer.log('Initialization notice for NotificationsListener: $e',
+          name: 'NotificationListenerManager');
     }
   }
 
   /// Check if user has granted Notification Access permission in Android Settings
+  /// Checks native AndroidX NotificationManagerCompat first, fallback to plugin.
+  /// # O(1) time, O(1) space
   Future<bool> hasPermission() async {
+    // 1. Primary: Query native AndroidX NotificationManagerCompat
+    try {
+      final bool? nativeGranted = await _nativeHostChannel
+          .invokeMethod<bool>('checkNotificationPermission');
+      if (nativeGranted == true) {
+        return true;
+      }
+    } catch (_) {}
+
+    // 2. Secondary fallback: Query plugin property
     try {
       final bool? granted = await NotificationsListener.hasPermission;
       return granted ?? false;
@@ -87,9 +122,16 @@ class NotificationListenerManager with ChangeNotifier {
   /// Open Android Notification Access Settings directly
   Future<void> requestPermission() async {
     try {
+      final bool? opened = await _nativeHostChannel
+          .invokeMethod<bool>('openNotificationListenerSettings');
+      if (opened == true) return;
+    } catch (_) {}
+
+    try {
       await NotificationsListener.openPermissionSettings();
     } catch (e) {
-      developer.log('Error opening permission settings: $e', name: 'NotificationListenerManager');
+      developer.log('Error opening permission settings: $e',
+          name: 'NotificationListenerManager');
     }
   }
 
@@ -103,20 +145,15 @@ class NotificationListenerManager with ChangeNotifier {
       final hasPerm = await hasPermission();
       if (enable) {
         if (hasPerm) {
-          final isRunning = await NotificationsListener.isRunning;
-          if (!(isRunning ?? false)) {
-            await NotificationsListener.startService(
-              title: "Smart Notification Tracker",
-              description: "Monitoring incoming notifications in the background",
-            );
-          }
+          await _startUnderlyingService();
         }
       } else {
         await NotificationsListener.stopService();
       }
       return true;
     } catch (e) {
-      developer.log('Error toggling tracking: $e', name: 'NotificationListenerManager');
+      developer.log('Error toggling tracking: $e',
+          name: 'NotificationListenerManager');
       return false;
     }
   }
@@ -131,11 +168,43 @@ class NotificationListenerManager with ChangeNotifier {
     await toggleTracking(false);
   }
 
+  /// Rebind the Android notification listener service component
+  Future<void> rebindService() async {
+    try {
+      await _nativeHostChannel.invokeMethod('rebindNotificationListener');
+    } catch (_) {}
+  }
+
+  /// Internal helper to start foreground/background service using dual native + plugin strategy
+  Future<void> _startUnderlyingService() async {
+    try {
+      // 1. Direct native start and component rebind
+      await _nativeHostChannel.invokeMethod('startNotificationListenerService');
+    } catch (_) {}
+
+    try {
+      // 2. Plugin service start
+      final isRunning = await NotificationsListener.isRunning;
+      if (!(isRunning ?? false)) {
+        await NotificationsListener.startService(
+          title: "Smart Notification Tracker",
+          description: "Monitoring incoming notifications in the background",
+        );
+      }
+    } catch (_) {}
+  }
+
   /// Process incoming notification event from UI isolate
   Future<void> _processEventInUI(NotificationEvent evt) async {
     // Notify listeners so timeline can refresh from SQLite
     notifyListeners();
-    _notificationStreamController.add(const NotificationModel(packageName: '', appName: '', title: '', body: '', timestamp: 0));
+    _notificationStreamController.add(const NotificationModel(
+      packageName: '',
+      appName: '',
+      title: '',
+      body: '',
+      timestamp: 0,
+    ));
   }
 
   /// Process incoming notification event safely from background isolate or main thread
@@ -147,7 +216,9 @@ class NotificationListenerManager with ChangeNotifier {
       // Check master tracking switch
       final isEnabled = await SecureStorageService.instance.isTrackingEnabled();
       if (!isEnabled) {
-        developer.log('Tracking disabled, dropping notification from ${evt.packageName}', name: 'NotificationListenerManager');
+        developer.log(
+            'Tracking disabled, dropping notification from ${evt.packageName}',
+            name: 'NotificationListenerManager');
         return;
       }
 
@@ -163,12 +234,14 @@ class NotificationListenerManager with ChangeNotifier {
       // Verify if app is allowed by user filter rules
       final isAllowed = await DatabaseHelper.instance.isAppAllowed(packageName);
       if (!isAllowed) {
-        developer.log('App filtered out by user: $packageName', name: 'NotificationListenerManager');
+        developer.log('App filtered out by user: $packageName',
+            name: 'NotificationListenerManager');
         return;
       }
 
       final String appName = _resolveHumanReadableAppName(packageName);
-      final int timestamp = evt.createAt?.millisecondsSinceEpoch ?? DateTime.now().millisecondsSinceEpoch;
+      final int timestamp = evt.createAt?.millisecondsSinceEpoch ??
+          DateTime.now().millisecondsSinceEpoch;
 
       final notification = NotificationModel(
         packageName: packageName,
@@ -178,10 +251,14 @@ class NotificationListenerManager with ChangeNotifier {
         timestamp: timestamp,
       );
 
-      final insertedId = await DatabaseHelper.instance.insertNotification(notification);
-      developer.log('Successfully recorded notification #$insertedId from $appName', name: 'NotificationListenerManager');
+      final insertedId =
+          await DatabaseHelper.instance.insertNotification(notification);
+      developer.log(
+          'Successfully recorded notification #$insertedId from $appName',
+          name: 'NotificationListenerManager');
     } catch (e, st) {
-      developer.log('Error in notification event handler: $e', error: e, stackTrace: st, name: 'NotificationListenerManager');
+      developer.log('Error in notification event handler: $e',
+          error: e, stackTrace: st, name: 'NotificationListenerManager');
     }
   }
 

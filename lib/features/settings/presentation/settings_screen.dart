@@ -64,6 +64,11 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
       final count = await DatabaseHelper.instance.getNotificationsCount();
       final theme = ThemeService.instance.themeMode;
 
+      if (perm && tracking) {
+        // Automatically start and rebind service when permission is active
+        await NotificationListenerManager.instance.startListening();
+      }
+
       if (mounted) {
         setState(() {
           _isTracking = tracking;
