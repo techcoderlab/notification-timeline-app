@@ -195,30 +195,45 @@ class NotificationListenerManager with ChangeNotifier {
   /// Internal helper to start foreground/background service using dual native + plugin strategy.
   /// Always starts unconditionally — the plugin's isRunning can report stale state.
   Future<void> _startUnderlyingService() async {
-    try {
-      // 1. Direct native start — ensures component is enabled in PackageManager
-      await _nativeHostChannel.invokeMethod('startNotificationListenerService');
-    } catch (e) {
-      developer.log('Native service start notice: $e',
-          name: 'NotificationListenerManager');
-    }
-
-    try {
-      // 2. Plugin service start — always call to ensure foreground service is running.
-      // TRADE-OFF: P4 Performance — we accept a redundant startService call when already
-      // running because the plugin handles it gracefully, and skipping it causes missed events.
-      await NotificationsListener.startService(
-        title: "Smart Notification Tracker",
-        description: "Monitoring incoming notifications in the background",
-      );
-    } catch (e) {
-      developer.log('Error starting plugin service: $e',
-          name: 'NotificationListenerManager');
-    }
-
-    // 3. Force Android OS to rebind the NotificationListenerService component
-    await rebindService();
+  try {
+    // 1. Plugin service start — handles startForeground() notification properly
+    await NotificationsListener.startService(
+      title: "Smart Notification Tracker",
+      description: "Monitoring incoming notifications in the background",
+    );
+  } catch (e) {
+    developer.log('Error starting plugin service: $e',
+        name: 'NotificationListenerManager');
   }
+
+  // 2. Force Android OS to rebind the NotificationListenerService component
+  await rebindService();
+}
+  // Future<void> _startUnderlyingService() async {
+  //   try {
+  //     // 1. Direct native start — ensures component is enabled in PackageManager
+  //     await _nativeHostChannel.invokeMethod('startNotificationListenerService');
+  //   } catch (e) {
+  //     developer.log('Native service start notice: $e',
+  //         name: 'NotificationListenerManager');
+  //   }
+
+  //   try {
+  //     // 2. Plugin service start — always call to ensure foreground service is running.
+  //     // TRADE-OFF: P4 Performance — we accept a redundant startService call when already
+  //     // running because the plugin handles it gracefully, and skipping it causes missed events.
+  //     await NotificationsListener.startService(
+  //       title: "Smart Notification Tracker",
+  //       description: "Monitoring incoming notifications in the background",
+  //     );
+  //   } catch (e) {
+  //     developer.log('Error starting plugin service: $e',
+  //         name: 'NotificationListenerManager');
+  //   }
+
+  //   // 3. Force Android OS to rebind the NotificationListenerService component
+  //   await rebindService();
+  // }
 
   /// Process incoming notification event from UI isolate
   Future<void> _processEventInUI(NotificationEvent evt) async {

@@ -76,7 +76,12 @@ class DatabaseHelper {
         },
         onConfigure: (db) async {
           // Enable SQLite Write-Ahead Logging (WAL) for concurrent read/write throughput
-          await db.execute('PRAGMA journal_mode = WAL');
+          // ❌ WRONG (Causes DatabaseException on Android SQLite driver):
+          // await db.execute('PRAGMA journal_mode = WAL;');
+
+          // ✅ CORRECT: Use rawQuery for PRAGMA statements returning values
+          await db.rawQuery('PRAGMA journal_mode = WAL;');
+
           await db.execute('PRAGMA synchronous = NORMAL');
         },
       );
